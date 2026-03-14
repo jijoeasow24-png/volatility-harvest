@@ -1,0 +1,1334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0f1e">
+<title>VolatilityHarvest</title>
+<link rel="manifest" href="/manifest.json">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0a0f1e;--bg2:#111827;--bg3:#1a2035;--bg4:#222b45;
+  --text:#e8eaf0;--text2:#94a3b8;--text3:#64748b;
+  --green:#22c55e;--green-dim:#16a34a;--green-bg:rgba(34,197,94,.12);
+  --red:#ef4444;--red-dim:#dc2626;--red-bg:rgba(239,68,68,.12);
+  --blue:#3b82f6;--blue-bg:rgba(59,130,246,.12);
+  --orange:#f59e0b;--orange-bg:rgba(245,158,11,.12);
+  --purple:#a855f7;--purple-bg:rgba(168,85,247,.12);
+  --cyan:#06b6d4;
+  --border:#1e293b;--border2:#334155;
+  --card:#111827;--card-hover:#1a2035;
+  --radius:12px;
+}
+html,body,#root{height:100%;width:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:'DM Sans',system-ui,sans-serif}
+.mono{font-family:'JetBrains Mono',monospace}
+input,textarea,select{background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;font-size:14px;font-family:inherit;outline:none;width:100%}
+input:focus,select:focus{border-color:var(--blue)}
+button{cursor:pointer;font-family:inherit}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+@keyframes spin{to{transform:rotate(360deg)}}
+.fade-in{animation:fadeIn .3s ease}
+.pulse{animation:pulse 1.5s infinite}
+.spin{animation:spin 1s linear infinite}
+
+/* App layout */
+.app{display:flex;flex-direction:column;height:100%;overflow:hidden}
+.main{flex:1;overflow-y:auto;overflow-x:hidden;padding:16px;padding-bottom:80px}
+.tab-bar{position:fixed;bottom:0;left:0;right:0;display:flex;background:rgba(10,15,30,.95);backdrop-filter:blur(20px);border-top:1px solid var(--border);padding:6px 0 env(safe-area-inset-bottom,8px);z-index:100}
+.tab-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;background:none;border:none;color:var(--text3);font-size:10px;font-weight:600;transition:all .2s}
+.tab-btn.active{color:var(--blue)}
+.tab-btn svg{width:22px;height:22px}
+
+/* Cards */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px}
+.card-glow{box-shadow:0 0 20px rgba(59,130,246,.06)}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.card-title{font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px}
+.divider{height:1px;background:var(--border);margin:10px 0}
+
+/* Stats grid */
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.stat-card{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px}
+.stat-label{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);font-weight:600}
+.stat-value{font-size:20px;font-weight:800;margin-top:2px}
+.stat-sub{font-size:11px;color:var(--text3);margin-top:1px}
+
+/* Badges */
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;white-space:nowrap}
+.badge-green{background:var(--green-bg);color:var(--green)}
+.badge-red{background:var(--red-bg);color:var(--red)}
+.badge-orange{background:var(--orange-bg);color:var(--orange)}
+.badge-blue{background:var(--blue-bg);color:var(--blue)}
+.badge-purple{background:var(--purple-bg);color:var(--purple)}
+.badge-dark-red{background:rgba(180,0,0,.15);color:#f87171}
+
+/* Toggle */
+.toggle{position:relative;width:44px;height:24px;background:var(--bg4);border-radius:12px;cursor:pointer;transition:background .2s;border:none;flex-shrink:0}
+.toggle.on{background:var(--green)}
+.toggle::after{content:'';position:absolute;top:2px;left:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:transform .2s}
+.toggle.on::after{transform:translateX(20px)}
+
+/* Progress bar */
+.progress-bar{height:10px;background:var(--bg4);border-radius:5px;overflow:hidden;position:relative}
+.progress-fill{height:100%;border-radius:5px;transition:width .5s ease}
+
+/* Header */
+.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.page-title{font-size:22px;font-weight:800;letter-spacing:-.5px}
+.refresh-btn{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--text);font-size:12px;display:flex;align-items:center;gap:6px;font-weight:600}
+.refresh-btn:disabled{opacity:.5}
+
+/* Status dot */
+.status-dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+
+/* Modals */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;display:flex;align-items:flex-end;justify-content:center}
+.modal{background:var(--bg2);border-radius:16px 16px 0 0;width:100%;max-width:500px;max-height:85vh;overflow-y:auto;padding:20px}
+.modal-title{font-size:18px;font-weight:800;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
+.form-row{margin-bottom:12px}
+.form-label{font-size:12px;font-weight:600;color:var(--text2);margin-bottom:4px;display:block}
+.form-actions{display:flex;gap:10px;margin-top:16px}
+.btn{padding:10px 20px;border-radius:8px;font-size:14px;font-weight:700;border:none;transition:all .15s}
+.btn-primary{background:var(--blue);color:#fff}
+.btn-primary:hover{background:#2563eb}
+.btn-secondary{background:var(--bg3);color:var(--text);border:1px solid var(--border)}
+.btn-danger{background:var(--red);color:#fff}
+.btn-full{width:100%}
+
+/* List items */
+.list-item{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)}
+.list-item:last-child{border-bottom:none}
+
+/* Chip filter */
+.chip-row{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch}
+.chip{padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;border:none;white-space:nowrap;background:var(--bg3);color:var(--text2);transition:all .15s}
+.chip.active{background:var(--blue);color:#fff}
+
+/* Responsive */
+@media(min-width:768px){
+  .main{max-width:600px;margin:0 auto}
+  .tab-bar{max-width:600px;left:50%;transform:translateX(-50%);border-radius:12px 12px 0 0}
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState, useEffect, useCallback, useRef, useMemo, createContext, useContext} = React;
+
+// ─── CONSTANTS & DATA ──────────────────────────────────────────────────────
+const REGIMES = {
+  'Risk-On':         {emoji:'📈',color:'var(--green)',tagline:'Full exposure — deploy into growth',
+    plan:[{label:'Primary',amount:'$1,200',target:'QQQ or SPY (core ETF)'},{label:'Secondary',amount:'$800',target:'Best active satellite (NVDA/SMH/XBI)'}]},
+  'Risk-Off':        {emoji:'📉',color:'var(--red)',tagline:'Defensive — hold core, pause satellites',
+    plan:[{label:'Primary',amount:'$1,400',target:'GLD + XLV (split 60/40)'},{label:'Cash',amount:'$600',target:'Add to cash buffer'}]},
+  'Inflation Spike': {emoji:'🔥',color:'var(--orange)',tagline:'Rotate to energy & gold',
+    plan:[{label:'Primary',amount:'$1,200',target:'XLE + COPX (split 60/40)'},{label:'Secondary',amount:'$800',target:'GLD top-up'}]},
+  'Recession Scare': {emoji:'⚠️',color:'#dc2626',tagline:'Max cash — XLV & GLD only',
+    plan:[{label:'Cash',amount:'$1,000',target:'Add to cash buffer'},{label:'Defensive',amount:'$600',target:'XLV (healthcare)'},{label:'Safe Haven',amount:'$400',target:'GLD'}]},
+  'Oil Shock':       {emoji:'🛢️',color:'var(--orange)',tagline:'Energy theme active — buy dips only',
+    plan:[{label:'Energy',amount:'$1,200',target:'XLE / USO — ONLY after dip'},{label:'Core',amount:'$800',target:'SPY'}]},
+  'Not Assessed':    {emoji:'❓',color:'var(--text3)',tagline:'Complete the regime check',
+    plan:[{label:'',amount:'$2,000',target:'Complete regime check first'}]}
+};
+
+const CIRCUIT_LEVELS = [
+  {name:'Normal',thresh:'0% to -4.9%',color:'var(--green)',min:0,max:-4.99,
+    actions:['Follow monthly operating system','Deploy $2K per regime plan','Normal trim/add rules apply']},
+  {name:'Yellow Alert',thresh:'-5% to -9.9%',color:'#eab308',min:-5,max:-9.99,
+    actions:['Pause ALL new satellite buys','Review all positions','Do NOT add to losing positions','No drastic action — stay calm']},
+  {name:'Orange Alert',thresh:'-10% to -11.9%',color:'var(--orange)',min:-10,max:-11.99,
+    actions:['SELL ALL satellite positions NOW','Raise cash to 20%','Consider SH inverse ETF hedge (max 3%)','Protect core — do not sell SPY/QQQ/GLD']},
+  {name:'Red Alert',thresh:'-12% to -14.9%',color:'var(--red)',min:-12,max:-14.99,
+    actions:['Trim all core positions by 25%','Raise cash to 25%','Add hedge if not already on','STOP deploying monthly $2K']},
+  {name:'HARD STOP',thresh:'-15% or worse',color:'#b91c1c',min:-15,max:-100,
+    actions:['Sell ALL remaining satellites immediately','Trim core to 40% of portfolio','Cash+hedge must equal 60%','NO redeployment until SPY holds 50-day MA for 2 weeks']}
+];
+
+const ROLES = {
+  Core:     {color:'var(--blue)',addPct:-0.07,trimPct:0.15,addSize:0.015,stopLoss:-0.20},
+  Satellite:{color:'var(--purple)',addPct:-0.12,trimPct:0.20,addSize:0.005,stopLoss:-0.20},
+  Hedge:    {color:'var(--orange)',addPct:0,trimPct:0.12,addSize:0.01,stopLoss:-0.20}
+};
+
+const DO_NOTHING_RULES = [
+  'Market down < 3% (not a dip yet — need 5%+)',
+  'No specific trigger is firing from Section 4',
+  'VIX 20–30 without clear direction',
+  "You've already made 2+ unplanned trades this month",
+  '< 4 weeks since last add to this position',
+  'Scary headline but price move < 5%',
+  'Cash buffer is below 5%'
+];
+
+const THEMES = ['All','Technology','Healthcare','Commodities','Broad Market','Diversifiers','Hedges'];
+
+const SEED_POSITIONS = [
+  {ticker:'ASML',name:'ASML Holding N.V.',role:'Satellite',theme:'Technology',buyPrice:1058.44,currentPrice:1397.91,shares:1.00},
+  {ticker:'CRWD',name:'CrowdStrike Holdings',role:'Satellite',theme:'Technology',buyPrice:482.49,currentPrice:396.16,shares:2.00},
+  {ticker:'GOOGL',name:'Alphabet Inc.',role:'Core',theme:'Technology',buyPrice:310.98,currentPrice:304.63,shares:10.01},
+  {ticker:'MSFT',name:'Microsoft Corporation',role:'Core',theme:'Technology',buyPrice:493.94,currentPrice:406.01,shares:16.35},
+  {ticker:'NVDA',name:'NVIDIA Corporation',role:'Satellite',theme:'Technology',buyPrice:180.81,currentPrice:182.74,shares:26.15},
+  {ticker:'PLTR',name:'Palantir Technologies',role:'Satellite',theme:'Technology',buyPrice:193.00,currentPrice:152.55,shares:5.03},
+  {ticker:'QQQ',name:'Invesco QQQ Trust (Nasdaq-100)',role:'Core',theme:'Broad Market',buyPrice:618.35,currentPrice:610.83,shares:5.40}
+];
+
+const WATCHLIST = [
+  {ticker:'SPY',name:'SPDR S&P 500 ETF',theme:'Broad Market',role:'Core',addTrigger:'Down 5–7% from 4-wk high',trimTrigger:'Up 12% from buy',stopLoss:'Down 20%',notes:'Core anchor'},
+  {ticker:'VOO',name:'Vanguard S&P 500 ETF',theme:'Broad Market',role:'Core',addTrigger:'Down 5–7% from 4-wk high',trimTrigger:'Up 12% from buy',stopLoss:'Down 20%',notes:'Lower cost SPY alt'},
+  {ticker:'QQQ',name:'Nasdaq-100 ETF',theme:'Broad Market',role:'Core',addTrigger:'Down 7% from 4-wk high',trimTrigger:'Up 15% from buy',stopLoss:'Down 20%',notes:'Core tech/growth'},
+  {ticker:'VTI',name:'Total US Market ETF',theme:'Broad Market',role:'Core',addTrigger:'Down 5% from 4-wk high',trimTrigger:'Up 12% from buy',stopLoss:'Down 20%',notes:'Broadest diversification'},
+  {ticker:'IWM',name:'Russell 2000 ETF',theme:'Broad Market',role:'Satellite',addTrigger:'Down 8%, risk-on only',trimTrigger:'Up 15% from buy',stopLoss:'Down 22%',notes:'Small-cap diversifier'},
+  {ticker:'MSFT',name:'Microsoft',theme:'Technology',role:'Core',addTrigger:'Down 8–10% from 4-wk high',trimTrigger:'Up 18% from buy',stopLoss:'Down 20%',notes:'AI/Cloud leader'},
+  {ticker:'AAPL',name:'Apple',theme:'Technology',role:'Core',addTrigger:'Down 8% from 4-wk high',trimTrigger:'Up 15% from buy',stopLoss:'Down 20%',notes:'Consumer tech'},
+  {ticker:'NVDA',name:'NVIDIA',theme:'Technology',role:'Satellite',addTrigger:'Down 12–15% from 4-wk high',trimTrigger:'Up 20% from buy',stopLoss:'Down 20%',notes:'AI/Semis satellite'},
+  {ticker:'AMZN',name:'Amazon',theme:'Technology',role:'Core',addTrigger:'Down 8% from 4-wk high',trimTrigger:'Up 15% from buy',stopLoss:'Down 20%',notes:'Cloud/eCommerce'},
+  {ticker:'GOOG',name:'Alphabet (Google)',theme:'Technology',role:'Core',addTrigger:'Down 8% from 4-wk high',trimTrigger:'Up 15% from buy',stopLoss:'Down 20%',notes:'AI/Ads'},
+  {ticker:'META',name:'Meta Platforms',theme:'Technology',role:'Satellite',addTrigger:'Down 10% from 4-wk high',trimTrigger:'Up 18% from buy',stopLoss:'Down 20%',notes:'Social/AI satellite'},
+  {ticker:'XLK',name:'Technology Sector ETF',theme:'Technology',role:'Core',addTrigger:'Down 6% from 4-wk high',trimTrigger:'Up 14% from buy',stopLoss:'Down 20%',notes:'Broad tech ETF'},
+  {ticker:'SMH',name:'Semiconductor ETF',theme:'Technology',role:'Satellite',addTrigger:'Down 10% from 4-wk high',trimTrigger:'Up 18% from buy',stopLoss:'Down 22%',notes:'Semis ETF'},
+  {ticker:'XLV',name:'Healthcare Sector ETF',theme:'Healthcare',role:'Core',addTrigger:'Down 5% from 4-wk high',trimTrigger:'Up 12% from buy',stopLoss:'Down 20%',notes:'Core healthcare'},
+  {ticker:'IBB',name:'iShares Biotech ETF',theme:'Healthcare',role:'Satellite',addTrigger:'Down 8% from 4-wk high',trimTrigger:'Up 18% from buy',stopLoss:'Down 22%',notes:'Biotech satellite'},
+  {ticker:'XBI',name:'SPDR Biotech ETF',theme:'Healthcare',role:'Satellite',addTrigger:'Down 10% from 4-wk high',trimTrigger:'Up 20% from buy',stopLoss:'Down 25%',notes:'Higher vol biotech'},
+  {ticker:'LLY',name:'Eli Lilly',theme:'Healthcare',role:'Satellite',addTrigger:'Down 10% from 4-wk high',trimTrigger:'Up 20% from buy',stopLoss:'Down 20%',notes:'GLP-1/obesity drug cycle'},
+  {ticker:'GLD',name:'SPDR Gold ETF',theme:'Commodities',role:'Core',addTrigger:'Down 5% from 4-wk high',trimTrigger:'Up 12% from buy',stopLoss:'Down 20%',notes:'Core safe haven'},
+  {ticker:'XLE',name:'Energy Sector ETF',theme:'Commodities',role:'Core',addTrigger:'Down 7% from 4-wk high',trimTrigger:'Up 15% from buy',stopLoss:'Down 20%',notes:'Core energy'},
+  {ticker:'XOM',name:'ExxonMobil',theme:'Commodities',role:'Core',addTrigger:'Down 8% from 4-wk high',trimTrigger:'Up 15% from buy',stopLoss:'Down 20%',notes:'Core energy stock'},
+  {ticker:'USO',name:'US Oil ETF',theme:'Commodities',role:'Satellite',addTrigger:'Down 10% from 4-wk high',trimTrigger:'Up 15% — trim fast',stopLoss:'Down 22%',notes:'Oil price satellite'},
+  {ticker:'COPX',name:'Copper Miners ETF',theme:'Commodities',role:'Satellite',addTrigger:'Down 10% from 4-wk high',trimTrigger:'Up 18% from buy',stopLoss:'Down 22%',notes:'Industrial metals'},
+  {ticker:'SLV',name:'Silver ETF',theme:'Commodities',role:'Satellite',addTrigger:'Down 8% from 4-wk high',trimTrigger:'Up 15% from buy',stopLoss:'Down 22%',notes:'Precious metals satellite'},
+  {ticker:'BND',name:'US Bond ETF',theme:'Diversifiers',role:'Hedge',addTrigger:'Recession scare + yields falling',trimTrigger:'Remove when risk-on',stopLoss:'N/A',notes:'Safe haven in recessions'},
+  {ticker:'VNQ',name:'Real Estate ETF',theme:'Diversifiers',role:'Satellite',addTrigger:'When rates plateau/fall',trimTrigger:'Up 12% from buy',stopLoss:'Down 20%',notes:'Rate-sensitive diversifier'},
+  {ticker:'SH',name:'ProShares Short S&P 500',theme:'Hedges',role:'Hedge',addTrigger:'SPY<200MA + drawdown>-10%',trimTrigger:'When hedge thesis resolved',stopLoss:'Hold max 30 days',notes:'1x inverse — max 30 days'},
+  {ticker:'SQQQ',name:'ProShares 3x Short Nasdaq',theme:'Hedges',role:'Hedge',addTrigger:'Tech>30%+VIX>30+dd>-10%',trimTrigger:'Remove after 15 days',stopLoss:'Hold max 15 days',notes:'WARNING: 3x decay'}
+];
+
+const ECON_CALENDAR = [
+  {date:'2026-03-06',title:'Non-Farm Payrolls (Feb)',cat:'economic',impact:'high'},
+  {date:'2026-03-11',title:'CPI Inflation Report (Feb)',cat:'economic',impact:'high'},
+  {date:'2026-03-18',title:'FOMC Meeting — Day 1',cat:'fed',impact:'high'},
+  {date:'2026-03-19',title:'FOMC Rate Decision + Press Conf.',cat:'fed',impact:'high'},
+  {date:'2026-03-26',title:'GDP Q4 2025 Final',cat:'economic',impact:'med'},
+  {date:'2026-03-31',title:'PCE Price Index (Feb)',cat:'economic',impact:'high'},
+  {date:'2026-04-03',title:'Non-Farm Payrolls (Mar)',cat:'economic',impact:'high'},
+  {date:'2026-04-09',title:'CPI Inflation Report (Mar)',cat:'economic',impact:'high'},
+  {date:'2026-04-14',title:'Q1 2026 Earnings Season Begins',cat:'earnings',impact:'high'},
+  {date:'2026-04-22',title:'GOOGL Q1 Earnings (est.)',cat:'earnings',impact:'high'},
+  {date:'2026-04-28',title:'FOMC Meeting — Day 1',cat:'fed',impact:'high'},
+  {date:'2026-04-29',title:'FOMC Rate Decision + GDP Q1',cat:'fed',impact:'high'},
+  {date:'2026-04-30',title:'MSFT Q3 Earnings (est.)',cat:'earnings',impact:'high'},
+  {date:'2026-05-01',title:'Non-Farm Payrolls (Apr)',cat:'economic',impact:'high'},
+  {date:'2026-05-06',title:'NVDA Q1 Earnings (est.)',cat:'earnings',impact:'high'},
+  {date:'2026-05-13',title:'CPI Inflation Report (Apr)',cat:'economic',impact:'high'},
+  {date:'2026-05-19',title:'ASML Q1 Earnings (est.)',cat:'earnings',impact:'med'},
+  {date:'2026-05-20',title:'FOMC Meeting Minutes',cat:'fed',impact:'med'},
+];
+
+// ─── UTILITY FUNCTIONS ─────────────────────────────────────────────────────
+const fmt$ = v => '$' + Math.abs(v).toLocaleString('en-US',{maximumFractionDigits:0});
+const fmtPct = v => v.toFixed(1) + '%';
+const pnlSign = v => v >= 0 ? '+' : '';
+const pnlColor = v => v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--text3)';
+const fmtVol = v => v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v.toString();
+
+function getSignal(pos) {
+  const role = ROLES[pos.role];
+  if (!role) return {name:'HOLD',color:'var(--text3)',short:'HOLD'};
+  const pct = pos.buyPrice > 0 ? (pos.currentPrice - pos.buyPrice) / pos.buyPrice : 0;
+  if (pct <= role.stopLoss) return {name:'EXIT — STOP LOSS',color:'#b91c1c',short:'EXIT ⛔'};
+  if (pos.role === 'Hedge') return {name:'HOLD',color:'var(--text3)',short:'HOLD'};
+  const add2 = role.addPct * 2, add1 = role.addPct;
+  const trim1 = role.trimPct, trim2 = role.trimPct + 0.10;
+  if (pct >= trim2) return {name:'TRIM STRONG',color:'var(--red)',short:'TRIM ↑↑'};
+  if (pct >= trim1) return {name:'TRIM',color:'var(--orange)',short:'TRIM ↑'};
+  if (pct <= add2)  return {name:'ADD STRONG',color:'var(--green-dim)',short:'ADD ↓↓'};
+  if (pct <= add1)  return {name:'ADD',color:'var(--green)',short:'ADD ↓'};
+  return {name:'HOLD',color:'var(--text3)',short:'HOLD'};
+}
+
+function getPnlPct(pos) {
+  if (pos.buyPrice <= 0) return 0;
+  return (pos.currentPrice - pos.buyPrice) / pos.buyPrice * 100;
+}
+
+function getCircuitLevel(drawdown) {
+  if (drawdown <= -15) return CIRCUIT_LEVELS[4];
+  if (drawdown <= -12) return CIRCUIT_LEVELS[3];
+  if (drawdown <= -10) return CIRCUIT_LEVELS[2];
+  if (drawdown <= -5)  return CIRCUIT_LEVELS[1];
+  return CIRCUIT_LEVELS[0];
+}
+
+function computeRegime(answers) {
+  if (answers.oilShock) return 'Oil Shock';
+  if (answers.inflation) return 'Inflation Spike';
+  if (answers.recession) return 'Recession Scare';
+  const yes = [answers.spy200,answers.vix20,answers.yields,answers.oil,answers.dxy].filter(Boolean).length;
+  return yes >= 3 ? 'Risk-On' : 'Risk-Off';
+}
+
+function timeAgo(ts) {
+  const diff = (Date.now()/1000) - ts;
+  if (diff < 3600) return Math.floor(diff/60)+'m ago';
+  if (diff < 86400) return Math.floor(diff/3600)+'h ago';
+  return Math.floor(diff/86400)+'d ago';
+}
+
+function daysUntil(dateStr) {
+  const d = new Date(dateStr+'T00:00:00');
+  const now = new Date();now.setHours(0,0,0,0);
+  return Math.round((d-now)/86400000);
+}
+
+// ─── LOCAL STORAGE HELPERS ──────────────────────────────────────────────────
+function loadState() {
+  try {
+    const saved = localStorage.getItem('vh_state_v2');
+    if (saved) return JSON.parse(saved);
+  } catch(e){}
+  return null;
+}
+function saveState(state) {
+  try { localStorage.setItem('vh_state_v2', JSON.stringify(state)); } catch(e){}
+}
+
+// ─── ICONS (inline SVG) ────────────────────────────────────────────────────
+const Icon = ({name,size=20,color='currentColor'}) => {
+  const icons = {
+    dashboard: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="4" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>,
+    regime: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/></svg>,
+    signals: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12h6l3-9 3 18 3-9h5"/></svg>,
+    portfolio: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>,
+    markets: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg>,
+    watchlist: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>,
+    refresh: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>,
+    plus: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+    x: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
+    edit: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
+    trash: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><polyline points="3,6 5,6 21,6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m5 0V4a1 1 0 011-1h2a1 1 0 011 1v2"/></svg>,
+    link: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15,3 21,3 21,9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>,
+    check: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5"><polyline points="20,6 9,17 4,12"/></svg>,
+    warn: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
+    search: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
+    back: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><polyline points="15,18 9,12 15,6"/></svg>,
+  };
+  return icons[name] || null;
+};
+
+// ─── COMPONENTS ─────────────────────────────────────────────────────────────
+
+const Badge = ({children,type='blue'}) => <span className={`badge badge-${type}`}>{children}</span>;
+const RoleBadge = ({role}) => {
+  const t = role==='Core'?'blue':role==='Satellite'?'purple':'orange';
+  return <Badge type={t}>{role}</Badge>;
+};
+const SignalBadge = ({signal,compact}) => {
+  const bg = signal.color;
+  return <span className="badge" style={{background:bg,color:'#fff',fontSize:compact?10:11}}>{compact?signal.short:signal.name}</span>;
+};
+const RegimeBadge = ({regime}) => {
+  const r = REGIMES[regime];
+  return <span className="badge" style={{background:r.color,color:'#fff'}}>{r.emoji} {regime}</span>;
+};
+
+const Toggle = ({value,onChange}) => (
+  <button className={`toggle ${value?'on':''}`} onClick={()=>onChange(!value)}/>
+);
+
+const Spinner = () => <span className="spin" style={{display:'inline-block',width:16,height:16,border:'2px solid var(--border2)',borderTopColor:'var(--blue)',borderRadius:'50%'}}/>;
+
+// ─── APP CONTEXT ────────────────────────────────────────────────────────────
+const AppContext = createContext();
+
+function AppProvider({children}) {
+  const [positions, setPositions] = useState([]);
+  const [portfolioPeak, setPeak] = useState(22249.92);
+  const [portfolioTotal, setTotal] = useState(20721.84);
+  const [regime, setRegime] = useState('Not Assessed');
+  const [regimeAnswers, setRegimeAnswers] = useState({spy200:false,vix20:false,yields:false,oil:false,dxy:false,oilShock:false,inflation:false,recession:false});
+  const [lastRegimeCheck, setLastRegimeCheck] = useState(null);
+  const [quotes, setQuotes] = useState({});
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState(null);
+  const [refreshError, setRefreshError] = useState(null);
+  const initialized = useRef(false);
+
+  // Load from localStorage on mount
+  useEffect(() => {
+    const saved = loadState();
+    if (saved) {
+      setPositions(saved.positions || SEED_POSITIONS);
+      setPeak(saved.portfolioPeak || 22249.92);
+      setTotal(saved.portfolioTotal || 20721.84);
+      setRegime(saved.regime || 'Not Assessed');
+      if (saved.regimeAnswers) setRegimeAnswers(saved.regimeAnswers);
+      if (saved.lastRegimeCheck) setLastRegimeCheck(new Date(saved.lastRegimeCheck));
+    } else {
+      setPositions(SEED_POSITIONS);
+    }
+    initialized.current = true;
+  }, []);
+
+  // Save to localStorage
+  useEffect(() => {
+    if (!initialized.current) return;
+    saveState({positions,portfolioPeak,portfolioTotal:portfolioTotal,regime,regimeAnswers,lastRegimeCheck});
+  }, [positions,portfolioPeak,portfolioTotal,regime,regimeAnswers,lastRegimeCheck]);
+
+  // Refresh prices
+  const refreshPrices = useCallback(async () => {
+    if (positions.length === 0 || isRefreshing) return;
+    setIsRefreshing(true);
+    setRefreshError(null);
+    try {
+      const tickers = positions.map(p => p.ticker).join(',');
+      const resp = await fetch(`/api/quotes?tickers=${tickers}`);
+      const data = await resp.json();
+      if (Object.keys(data).length === 0) throw new Error('No data');
+      setQuotes(data);
+      setPositions(prev => {
+        const updated = prev.map(p => {
+          const q = data[p.ticker.toUpperCase()];
+          return q ? {...p, currentPrice: q.price} : p;
+        });
+        return updated;
+      });
+      setLastRefresh(new Date());
+    } catch(e) {
+      setRefreshError('Price update failed — tap ↻ to retry');
+    }
+    setIsRefreshing(false);
+  }, [positions.length, isRefreshing]);
+
+  // Auto-refresh
+  useEffect(() => {
+    if (!initialized.current) return;
+    refreshPrices();
+    const t = setInterval(refreshPrices, 60000);
+    return () => clearInterval(t);
+  }, [positions.length]);
+
+  // Computed values
+  const positionsValue = positions.reduce((s,p) => s+p.currentPrice*p.shares, 0);
+  const positionsCost = positions.reduce((s,p) => s+p.buyPrice*p.shares, 0);
+  const totalPnL = positionsValue - positionsCost;
+  const totalPnLPct = positionsCost > 0 ? totalPnL/positionsCost*100 : 0;
+  const drawdown = portfolioPeak > 0 ? (portfolioTotal/portfolioPeak-1)*100 : 0;
+  const circuitLevel = getCircuitLevel(drawdown);
+  const actionableSignals = positions.filter(p => getSignal(p).name !== 'HOLD').sort((a,b) => Math.abs(getPnlPct(b))-Math.abs(getPnlPct(a)));
+
+  const addPosition = (p) => { setPositions(prev => [...prev, {...p, id: Date.now()}]); };
+  const updatePosition = (id, data) => { setPositions(prev => prev.map(p => (p.id||p.ticker)===id ? {...p,...data} : p)); };
+  const deletePosition = (id) => { setPositions(prev => prev.filter(p => (p.id||p.ticker)!==id)); };
+  const confirmRegime = () => { setRegime(computeRegime(regimeAnswers)); setLastRegimeCheck(new Date()); };
+
+  const value = {positions,setPositions,portfolioPeak,setPeak,portfolioTotal,setTotal:setTotal,
+    regime,setRegime,regimeAnswers,setRegimeAnswers,lastRegimeCheck,confirmRegime,
+    quotes,isRefreshing,lastRefresh,refreshError,refreshPrices,
+    positionsValue,positionsCost,totalPnL,totalPnLPct,drawdown,circuitLevel,actionableSignals,
+    addPosition,updatePosition,deletePosition};
+
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+}
+
+const useApp = () => useContext(AppContext);
+
+// ─── DASHBOARD TAB ──────────────────────────────────────────────────────────
+function DashboardTab() {
+  const app = useApp();
+  const [showEdit, setShowEdit] = useState(false);
+  const [editPeak, setEditPeak] = useState('');
+  const [editTotal, setEditTotal] = useState('');
+
+  const openEdit = () => { setEditPeak(Math.round(app.portfolioPeak)+''); setEditTotal(Math.round(app.portfolioTotal)+''); setShowEdit(true); };
+  const saveEdit = () => {
+    const p = parseFloat(editPeak), t = parseFloat(editTotal);
+    if (!isNaN(p) && !isNaN(t)) { app.setPeak(Math.max(p,t)); app.setTotal(t); }
+    setShowEdit(false);
+  };
+
+  const refreshLabel = app.lastRefresh ? (()=>{const d=Math.floor((Date.now()-app.lastRefresh)/1000);return d<60?'Just now':d<120?'1 min ago':Math.floor(d/60)+' min ago';})() : 'No data';
+
+  return (
+    <div className="fade-in">
+      <div className="page-header">
+        <div>
+          <div className="page-title">Dashboard</div>
+          <div style={{fontSize:11,color:'var(--text3)',display:'flex',alignItems:'center',gap:4,marginTop:2}}>
+            {app.isRefreshing ? <><Spinner/> Updating…</> : app.refreshError ? <span style={{color:'var(--orange)'}}>{app.refreshError}</span> : <><span className="status-dot" style={{background:'var(--green)'}}/> {refreshLabel}</>}
+          </div>
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          <button className="refresh-btn" onClick={app.refreshPrices} disabled={app.isRefreshing}><Icon name="refresh" size={14}/></button>
+          <button className="refresh-btn" onClick={openEdit}><Icon name="edit" size={14}/></button>
+        </div>
+      </div>
+
+      {/* Stats Grid */}
+      <div className="stats-grid">
+        <div className="stat-card"><div className="stat-label">Portfolio Value</div><div className="stat-value mono">{fmt$(app.portfolioTotal)}</div></div>
+        <div className="stat-card"><div className="stat-label">Total P&L</div><div className="stat-value mono" style={{color:pnlColor(app.totalPnL)}}>{pnlSign(app.totalPnL)}{fmt$(app.totalPnL)}</div><div className="stat-sub">{pnlSign(app.totalPnLPct)}{fmtPct(app.totalPnLPct)}</div></div>
+        <div className="stat-card"><div className="stat-label">Portfolio Peak</div><div className="stat-value mono">{fmt$(app.portfolioPeak)}</div><div className="stat-sub">All-time high</div></div>
+        <div className="stat-card"><div className="stat-label">Positions</div><div className="stat-value mono">{app.positions.length}</div><div className="stat-sub">{app.actionableSignals.length} need action</div></div>
+      </div>
+
+      {/* Drawdown Gauge */}
+      <div className="card">
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+          <span style={{fontSize:12,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:.5}}>Drawdown from Peak</span>
+          <span className="mono" style={{fontSize:18,fontWeight:800,color:app.circuitLevel.color}}>{fmtPct(app.drawdown)}</span>
+        </div>
+        <div className="progress-bar">
+          <div className="progress-fill" style={{width:Math.min(100,Math.abs(app.drawdown)/15*100)+'%',background:'linear-gradient(90deg,var(--green),#eab308,var(--orange),var(--red))'}}/>
+        </div>
+        <div style={{display:'flex',justifyContent:'space-between',marginTop:4,fontSize:10,color:'var(--text3)'}}>
+          <span>0%</span><span>-5%</span><span>-10%</span><span>-15%</span>
+        </div>
+      </div>
+
+      {/* Circuit Breaker */}
+      <div className="card" style={{borderColor:app.circuitLevel.name==='Normal'?'var(--border)':app.circuitLevel.color+'44'}}>
+        <div className="card-header">
+          <span className="card-title">🛡️ Circuit Breaker</span>
+          <Badge type={app.circuitLevel.name==='Normal'?'green':app.circuitLevel.name.includes('Yellow')?'orange':app.circuitLevel.name.includes('Orange')?'orange':'red'}>{app.circuitLevel.name}</Badge>
+        </div>
+        <div className="divider"/>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div><div style={{fontSize:11,color:'var(--text3)'}}>Drawdown Range</div><div style={{fontSize:14,fontWeight:700}}>{app.circuitLevel.thresh}</div></div>
+          <div style={{width:40,height:40,borderRadius:'50%',background:app.circuitLevel.color,display:'flex',alignItems:'center',justifyContent:'center'}}>
+            {app.circuitLevel.name==='Normal'?<Icon name="check" size={20} color="#fff"/>:<span style={{color:'#fff',fontWeight:800}}>!</span>}
+          </div>
+        </div>
+        {app.circuitLevel.name !== 'Normal' && (
+          <div style={{marginTop:12}}>
+            <div style={{fontSize:11,fontWeight:700,color:'var(--text3)',marginBottom:6}}>Required Actions:</div>
+            {app.circuitLevel.actions.map((a,i) => (
+              <div key={i} style={{display:'flex',gap:8,alignItems:'flex-start',marginBottom:6}}>
+                <span style={{width:20,height:20,minWidth:20,borderRadius:'50%',background:app.circuitLevel.min<=-10?'var(--red)':'var(--blue)',color:'#fff',fontSize:10,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center'}}>{i+1}</span>
+                <span style={{fontSize:13,color:app.circuitLevel.min<=-10?'var(--red)':'var(--text)',lineHeight:1.4}}>{a}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Regime Summary */}
+      <div className="card">
+        <div className="card-header"><span className="card-title">🌡️ Current Regime</span><RegimeBadge regime={app.regime}/></div>
+        <div className="divider"/>
+        {app.regime === 'Not Assessed' ? (
+          <div style={{fontSize:13,color:'var(--text3)'}}>Tap Regime tab to complete your monthly 5-question check.</div>
+        ) : (
+          <>
+            <div style={{fontSize:13,color:'var(--text2)',marginBottom:8}}>{REGIMES[app.regime].tagline}</div>
+            {app.lastRegimeCheck && <div style={{fontSize:10,color:'var(--text3)',marginBottom:8}}>Last checked: {app.lastRegimeCheck.toLocaleDateString()}</div>}
+            <div className="divider"/>
+            <div style={{fontSize:11,fontWeight:700,color:'var(--text3)',marginBottom:6}}>$2,000 Monthly Deployment:</div>
+            {REGIMES[app.regime].plan.map((p,i) => (
+              <div key={i} style={{display:'flex',gap:10,alignItems:'center',marginBottom:6}}>
+                <span className="mono" style={{fontSize:13,fontWeight:700,color:'var(--green)',minWidth:50}}>{p.amount}</span>
+                <span style={{fontSize:13}}>{p.target}</span>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+
+      {/* Do Nothing */}
+      <div className="card">
+        <div className="card-title" style={{marginBottom:10}}>✋ Do Nothing When…</div>
+        <div className="divider"/>
+        {DO_NOTHING_RULES.map((r,i) => (
+          <div key={i} style={{display:'flex',gap:8,alignItems:'flex-start',marginBottom:6}}>
+            <span style={{color:'var(--red)',fontSize:12,marginTop:1}}>✕</span>
+            <span style={{fontSize:13}}>{r}</span>
+          </div>
+        ))}
+        <div className="divider"/>
+        <div style={{textAlign:'center',fontSize:12,fontWeight:800,color:'var(--red)',letterSpacing:.5}}>WHEN IN DOUBT → DO NOTHING</div>
+      </div>
+
+      {/* Active Signals */}
+      {app.actionableSignals.length > 0 && (
+        <div className="card">
+          <div className="card-header"><span className="card-title">🔔 Active Signals</span><span style={{fontSize:11,color:'var(--text3)'}}>{app.actionableSignals.length} positions</span></div>
+          <div className="divider"/>
+          {app.actionableSignals.slice(0,4).map(pos => {
+            const sig = getSignal(pos);
+            const pct = getPnlPct(pos);
+            return (
+              <div key={pos.ticker} className="list-item">
+                <div><div style={{fontSize:14,fontWeight:700}}>{pos.ticker}</div><div style={{fontSize:11,color:'var(--text3)'}}>{pos.name}</div></div>
+                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                  <span className="mono" style={{fontSize:13,fontWeight:700,color:pnlColor(pct)}}>{pnlSign(pct)}{fmtPct(pct)}</span>
+                  <SignalBadge signal={sig} compact/>
+                </div>
+              </div>
+            );
+          })}
+          {app.actionableSignals.length > 4 && <div style={{fontSize:12,color:'var(--blue)',marginTop:8}}>+ {app.actionableSignals.length-4} more — see Signals tab</div>}
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {showEdit && (
+        <div className="modal-overlay" onClick={()=>setShowEdit(false)}>
+          <div className="modal" onClick={e=>e.stopPropagation()}>
+            <div className="modal-title">Update Portfolio <button onClick={()=>setShowEdit(false)} style={{background:'none',border:'none',color:'var(--text3)'}}><Icon name="x" size={20}/></button></div>
+            <div className="form-row"><label className="form-label">Current Portfolio Value ($)</label><input type="number" value={editTotal} onChange={e=>setEditTotal(e.target.value)}/></div>
+            <div className="form-row"><label className="form-label">Portfolio Peak / All-Time High ($)</label><input type="number" value={editPeak} onChange={e=>setEditPeak(e.target.value)}/></div>
+            <div className="form-actions"><button className="btn btn-secondary" onClick={()=>setShowEdit(false)}>Cancel</button><button className="btn btn-primary" onClick={saveEdit}>Save</button></div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── REGIME TAB ─────────────────────────────────────────────────────────────
+function RegimeTab() {
+  const app = useApp();
+  const [a, setA] = useState(app.regimeAnswers);
+  const [showOverrides, setShowOverrides] = useState(false);
+
+  useEffect(()=>{ setA(app.regimeAnswers); },[app.regimeAnswers]);
+
+  const update = (key) => { const next = {...a,[key]:!a[key]}; setA(next); };
+  const yesCount = [a.spy200,a.vix20,a.yields,a.oil,a.dxy].filter(Boolean).length;
+  const computed = computeRegime(a);
+  const save = () => { app.setRegimeAnswers(a); app.confirmRegime(); };
+
+  const questions = [
+    {key:'spy200',q:'Is SPY above its 200-day moving average?',how:"Search 'SPY' on Yahoo Finance → Charts → Add 200 SMA",yes:'YES = Risk-On signal',no:'NO = Risk-Off signal'},
+    {key:'vix20',q:'Is VIX below 20?',how:"Search '^VIX' on Yahoo Finance",yes:'Below 20 = Calm market',no:'Above 25 = Caution'},
+    {key:'yields',q:'Is the 10-year Treasury yield stable?',how:"Search '^TNX' — moved < 0.5% in 30 days?",yes:'Stable or falling = Good for tech',no:'Rising > 0.5% = Rotate to energy/gold'},
+    {key:'oil',q:'Is oil price stable (no major shock)?',how:"Search 'CL=F' — moved < ±15% in 30 days?",yes:'Stable = Neutral',no:'±15%+ = Adjust energy weight'},
+    {key:'dxy',q:'Is the US Dollar (DXY) NOT spiking?',how:"Search 'DXY' on TradingView",yes:'Weakening DXY = Good for gold & EM',no:'Strengthening DXY = Headwind'},
+  ];
+
+  return (
+    <div className="fade-in">
+      <div className="page-header"><div className="page-title">Regime Check</div></div>
+
+      <div className="card" style={{background:'var(--blue-bg)',border:'1px solid rgba(59,130,246,.2)'}}>
+        <div style={{fontSize:13,color:'var(--text2)'}}>ℹ️ Answer these 5 questions using Yahoo Finance & TradingView (free). Do this on the 1st–2nd trading day of each month.</div>
+      </div>
+
+      {/* Questions */}
+      <div className="card" style={{padding:0}}>
+        {questions.map((q,i) => (
+          <div key={q.key} style={{padding:14,borderBottom:i<4?'1px solid var(--border)':'none'}}>
+            <div style={{display:'flex',gap:10,alignItems:'flex-start'}}>
+              <span style={{width:24,height:24,minWidth:24,borderRadius:'50%',background:a[q.key]?'var(--green)':'var(--text3)',color:'#fff',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center'}}>{i+1}</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>{q.q}</div>
+                <div style={{fontSize:11,color:'var(--text3)',marginBottom:4}}>How: {q.how}</div>
+                <div style={{fontSize:11,color:a[q.key]?'var(--green)':'var(--red)'}}>{a[q.key]?'✅ '+q.yes:'❌ '+q.no}</div>
+              </div>
+              <Toggle value={a[q.key]} onChange={()=>update(q.key)}/>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Score */}
+      <div className="card">
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <div style={{display:'flex',gap:6}}>
+            {[0,1,2,3,4].map(i => (
+              <div key={i} style={{width:24,height:24,borderRadius:'50%',background:i<yesCount?'var(--green)':'var(--bg4)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,color:i<yesCount?'#fff':'var(--text3)'}}>{i<yesCount?'✓':i+1}</div>
+            ))}
+          </div>
+          <div style={{flex:1,textAlign:'right'}}>
+            <div style={{fontSize:18,fontWeight:800,color:yesCount>=3?'var(--green)':'var(--red)'}}>{yesCount}/5 YES</div>
+            <div style={{fontSize:11,color:'var(--text3)'}}>{yesCount>=3?'→ Risk-On baseline':'→ Risk-Off baseline'}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Overrides */}
+      <div className="card" style={{padding:0}}>
+        <button onClick={()=>setShowOverrides(!showOverrides)} style={{width:'100%',padding:14,background:'none',border:'none',color:'var(--text)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <span style={{fontWeight:700,fontSize:14}}>⚙️ Regime Override Modifiers</span>
+          <span style={{color:'var(--text3)',fontSize:12}}>{showOverrides?'▲':'▼'}</span>
+        </button>
+        {showOverrides && (
+          <div style={{padding:'0 14px 14px'}}>
+            <div className="divider"/>
+            {[{key:'oilShock',emoji:'🛢️',label:'Active Oil Shock',detail:'Oil moved ±20%+ in 30 days'},
+              {key:'inflation',emoji:'🔥',label:'Active Inflation Spike',detail:'CPI beat forecast + yields rising'},
+              {key:'recession',emoji:'⚠️',label:'Active Recession Scare',detail:'Jobs miss + PMI<50 + SPY -10% YTD'}
+            ].map(o => (
+              <div key={o.key} style={{display:'flex',alignItems:'center',padding:'10px 0',borderBottom:'1px solid var(--border)'}}>
+                <span style={{fontSize:20,marginRight:10}}>{o.emoji}</span>
+                <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700}}>{o.label}</div><div style={{fontSize:11,color:'var(--text3)'}}>{o.detail}</div></div>
+                <Toggle value={a[o.key]} onChange={()=>update(o.key)}/>
+              </div>
+            ))}
+            <div style={{fontSize:11,color:'var(--text3)',marginTop:8}}>These overrides take priority over the 5-question score.</div>
+          </div>
+        )}
+      </div>
+
+      {/* Result */}
+      <div className="card" style={{background:REGIMES[computed].color+'15',borderColor:REGIMES[computed].color+'44'}}>
+        <div style={{display:'flex',gap:12,alignItems:'center'}}>
+          <span style={{fontSize:36}}>{REGIMES[computed].emoji}</span>
+          <div>
+            <div style={{fontSize:11,color:'var(--text3)'}}>This Month's Regime</div>
+            <div style={{fontSize:18,fontWeight:800,color:REGIMES[computed].color}}>{computed}</div>
+            <div style={{fontSize:12,color:'var(--text2)'}}>{REGIMES[computed].tagline}</div>
+          </div>
+        </div>
+      </div>
+
+      <button className="btn btn-primary btn-full" style={{padding:14,fontSize:15,background:REGIMES[computed].color}} onClick={save}>
+        ✅ Save Regime & Get Deployment Plan
+      </button>
+
+      {/* Deployment plan if saved */}
+      {app.regime !== 'Not Assessed' && (
+        <div className="card" style={{marginTop:12}}>
+          <div className="card-title" style={{marginBottom:10}}>💰 $2,000 Monthly Deployment</div>
+          <div className="divider"/>
+          {REGIMES[app.regime].plan.map((p,i) => (
+            <div key={i} style={{display:'flex',gap:10,alignItems:'center',marginBottom:8}}>
+              <span className="mono" style={{fontSize:14,fontWeight:800,color:'#fff',background:'var(--green)',padding:'4px 10px',borderRadius:6,minWidth:60,textAlign:'center'}}>{p.amount}</span>
+              <div><div style={{fontSize:11,color:'var(--text3)',fontWeight:600}}>{p.label}</div><div style={{fontSize:13}}>{p.target}</div></div>
+            </div>
+          ))}
+          <div className="divider"/>
+          <div style={{fontSize:11,color:'var(--text3)'}}>⚠️ Only deploy on 1st–2nd trading day. Set price alerts, don't chase.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── SIGNALS TAB ────────────────────────────────────────────────────────────
+function SignalsTab() {
+  const app = useApp();
+  const [sortBy, setSortBy] = useState('signal');
+  const [selected, setSelected] = useState(null);
+  const [showAdd, setShowAdd] = useState(false);
+
+  const sorted = useMemo(() => {
+    const order = ['EXIT — STOP LOSS','TRIM STRONG','TRIM','ADD STRONG','ADD','HOLD'];
+    const list = [...app.positions];
+    if (sortBy==='signal') list.sort((a,b) => order.indexOf(getSignal(a).name) - order.indexOf(getSignal(b).name));
+    else if (sortBy==='pnl') list.sort((a,b) => Math.abs(getPnlPct(b)) - Math.abs(getPnlPct(a)));
+    else list.sort((a,b) => a.ticker.localeCompare(b.ticker));
+    return list;
+  },[app.positions,sortBy]);
+
+  if (selected) return <PositionDetail pos={selected} onBack={()=>setSelected(null)}/>;
+
+  return (
+    <div className="fade-in">
+      <div className="page-header"><div className="page-title">Trade Signals</div><button className="refresh-btn" onClick={()=>setShowAdd(true)}><Icon name="plus" size={14}/> Add</button></div>
+
+      <div style={{display:'flex',gap:6,marginBottom:12}}>
+        {['signal','pnl','name'].map(s => (
+          <button key={s} className={`chip ${sortBy===s?'active':''}`} onClick={()=>setSortBy(s)}>{s==='signal'?'Signal':s==='pnl'?'P&L %':'Name'}</button>
+        ))}
+      </div>
+
+      {sorted.length === 0 ? (
+        <div className="card" style={{textAlign:'center',padding:40}}>
+          <div style={{fontSize:40,marginBottom:12}}>📡</div>
+          <div style={{fontSize:16,fontWeight:700,marginBottom:6}}>No Positions Yet</div>
+          <div style={{fontSize:13,color:'var(--text3)',marginBottom:16}}>Add your first position to start receiving trade signals.</div>
+          <button className="btn btn-primary" onClick={()=>setShowAdd(true)}>Add First Position</button>
+        </div>
+      ) : (
+        sorted.map(pos => {
+          const sig = getSignal(pos);
+          const pct = getPnlPct(pos);
+          return (
+            <div key={pos.ticker+pos.buyPrice} className="card" style={{cursor:'pointer',padding:12}} onClick={()=>setSelected(pos)}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                <div>
+                  <div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:15,fontWeight:800}}>{pos.ticker}</span><RoleBadge role={pos.role}/></div>
+                  <div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>{pos.name}</div>
+                </div>
+                <div style={{textAlign:'right',display:'flex',alignItems:'center',gap:8}}>
+                  <span className="mono" style={{fontSize:14,fontWeight:700,color:pnlColor(pct)}}>{pnlSign(pct)}{fmtPct(pct)}</span>
+                  <SignalBadge signal={sig} compact/>
+                </div>
+              </div>
+            </div>
+          );
+        })
+      )}
+
+      {showAdd && <PositionModal onClose={()=>setShowAdd(false)} position={null}/>}
+    </div>
+  );
+}
+
+// ─── POSITION DETAIL ────────────────────────────────────────────────────────
+function PositionDetail({pos, onBack}) {
+  const app = useApp();
+  const [showEdit, setShowEdit] = useState(false);
+  const sig = getSignal(pos);
+  const pct = getPnlPct(pos);
+  const pnl = pos.currentPrice*pos.shares - pos.buyPrice*pos.shares;
+  const role = ROLES[pos.role];
+
+  const addPrice = pos.buyPrice * (1+role.addPct);
+  const trim1Price = pos.buyPrice * (1+role.trimPct);
+  const trim2Price = pos.buyPrice * (1+role.trimPct+0.10);
+  const stopPrice = pos.buyPrice * (1+role.stopLoss);
+
+  const trimInstr = () => {
+    if (pct <= role.stopLoss*100) return `EXIT FULL POSITION — sell all ${pos.shares.toFixed(2)} shares`;
+    if (sig.name.includes('TRIM STRONG')) { const s=Math.max(1,Math.round(pos.shares*0.35)); return `Sell 35% → ${s} shares (~$${Math.round(s*pos.currentPrice)})`; }
+    if (sig.name.includes('TRIM')) { const s=Math.max(1,Math.round(pos.shares*0.20)); return `Sell 20% → ${s} shares (~$${Math.round(s*pos.currentPrice)})`; }
+    return `No trim trigger yet (need +${Math.round(role.trimPct*100)}%)`;
+  };
+  const addInstr = () => {
+    if (!sig.name.includes('ADD')) return `No add trigger yet (need ${Math.round(role.addPct*100)}%)`;
+    const size = app.portfolioTotal * role.addSize;
+    return `Buy $${Math.round(size)} worth (${(role.addSize*100).toFixed(1)}% of portfolio)`;
+  };
+
+  return (
+    <div className="fade-in">
+      <button onClick={onBack} style={{display:'flex',alignItems:'center',gap:4,background:'none',border:'none',color:'var(--blue)',fontSize:13,fontWeight:600,marginBottom:12,padding:0}}><Icon name="back" size={16} color="var(--blue)"/> Back to Signals</button>
+
+      <div className="card" style={{background:sig.color+'12',borderColor:sig.color+'33'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+          <div>
+            <div style={{display:'flex',alignItems:'center',gap:8}}><span style={{fontSize:24,fontWeight:800}}>{pos.ticker}</span><RoleBadge role={pos.role}/></div>
+            <div style={{fontSize:13,color:'var(--text2)',marginTop:2}}>{pos.name}</div>
+            <div style={{fontSize:11,color:'var(--text3)'}}>{pos.theme}</div>
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <SignalBadge signal={sig}/>
+            <button className="refresh-btn" onClick={()=>setShowEdit(true)} style={{padding:'4px 8px'}}><Icon name="edit" size={14}/></button>
+          </div>
+        </div>
+      </div>
+
+      <div className="stats-grid">
+        <div className="stat-card"><div className="stat-label">Buy Price</div><div className="stat-value mono" style={{fontSize:16}}>${pos.buyPrice.toFixed(2)}</div></div>
+        <div className="stat-card"><div className="stat-label">Current Price</div><div className="stat-value mono" style={{fontSize:16}}>${pos.currentPrice.toFixed(2)}</div></div>
+        <div className="stat-card"><div className="stat-label">Shares</div><div className="stat-value mono" style={{fontSize:16}}>{pos.shares}</div></div>
+        <div className="stat-card"><div className="stat-label">P&L</div><div className="stat-value mono" style={{fontSize:16,color:pnlColor(pnl)}}>{pnlSign(pnl)}{fmt$(pnl)}</div><div className="stat-sub">{pnlSign(pct)}{fmtPct(pct)}</div></div>
+        <div className="stat-card"><div className="stat-label">Total Cost</div><div className="stat-value mono" style={{fontSize:16}}>{fmt$(pos.buyPrice*pos.shares)}</div></div>
+        <div className="stat-card"><div className="stat-label">Current Value</div><div className="stat-value mono" style={{fontSize:16}}>{fmt$(pos.currentPrice*pos.shares)}</div></div>
+      </div>
+
+      {/* Action card */}
+      <div className="card">
+        <div className="card-header"><span style={{fontSize:16,fontWeight:800}}>What to Do</span><SignalBadge signal={sig}/></div>
+        <div className="divider"/>
+        {sig.name.includes('STOP') ? (
+          <div style={{background:'rgba(185,28,28,.12)',padding:12,borderRadius:8,border:'1px solid rgba(185,28,28,.3)'}}>
+            <div style={{fontWeight:800,color:'#f87171',marginBottom:6}}>⚠️ STOP-LOSS TRIGGERED — EXIT NOW</div>
+            <div style={{fontSize:13,marginBottom:6}}>Position is down {fmtPct(pct)} from buy price of ${pos.buyPrice.toFixed(2)}.</div>
+            <div style={{fontSize:12,color:'var(--text2)',marginBottom:8}}>Rule: Any position down -20% must be exited in full. No exceptions.</div>
+            <div style={{background:'#b91c1c',color:'#fff',fontWeight:800,fontSize:14,textAlign:'center',padding:10,borderRadius:8}}>SELL ALL {pos.shares} SHARES AT MARKET OPEN</div>
+          </div>
+        ) : sig.name.includes('TRIM') ? (
+          <div>
+            <div style={{color:sig.color,fontWeight:700,fontSize:13,marginBottom:6}}>↑ TRIM INSTRUCTION</div>
+            <div style={{background:sig.color+'15',padding:10,borderRadius:8,fontSize:14,fontWeight:600}}>{trimInstr()}</div>
+            <div style={{fontSize:11,color:'var(--text3)',marginTop:6}}>After trimming, hold remaining. Set next trim alert at +{Math.round((role.trimPct+0.10)*100)}% from buy.</div>
+          </div>
+        ) : sig.name.includes('ADD') ? (
+          <div>
+            <div style={{color:sig.color,fontWeight:700,fontSize:13,marginBottom:6}}>↓ ADD INSTRUCTION</div>
+            <div style={{background:sig.color+'15',padding:10,borderRadius:8,fontSize:14,fontWeight:600}}>{addInstr()}</div>
+            <div style={{fontSize:11,color:'var(--text3)',marginTop:6}}>Don't add more than 1.5% in one buy. Wait 4 weeks before adding again.</div>
+          </div>
+        ) : (
+          <div style={{display:'flex',alignItems:'center',gap:8,color:'var(--text3)'}}><Icon name="check" size={16}/> <span style={{fontSize:13}}>No action required. Price is within normal range.</span></div>
+        )}
+      </div>
+
+      {/* Trigger levels */}
+      <div className="card">
+        <div className="card-title" style={{marginBottom:10}}>🎯 Your Price Triggers</div>
+        <div className="divider"/>
+        {[{label:'Add trigger',price:addPrice,color:'var(--green)',note:`${Math.round(role.addPct*100)}% below buy`},
+          {label:'Trim 20%',price:trim1Price,color:'var(--orange)',note:`+${Math.round(role.trimPct*100)}% above buy`},
+          {label:'Trim another 15%',price:trim2Price,color:'var(--red)',note:`+${Math.round((role.trimPct+0.10)*100)}% above buy`},
+          {label:'Stop-loss EXIT',price:stopPrice,color:'#b91c1c',note:'-20% below buy'}
+        ].map((t,i) => {
+          const triggered = (t.color==='var(--green)' && pos.currentPrice<=t.price) || (t.color!=='var(--green)' && pos.currentPrice>=t.price);
+          return (
+            <div key={i} style={{display:'flex',alignItems:'center',padding:'6px 0',gap:8}}>
+              <span style={{width:8,height:8,borderRadius:'50%',background:t.color}}/>
+              <span style={{fontSize:13,flex:1}}>{t.label}</span>
+              <span className="mono" style={{fontSize:13,fontWeight:700,color:t.color}}>${t.price.toFixed(2)}</span>
+              {triggered && <span className="badge" style={{background:t.color,color:'#fff',fontSize:9}}>NOW</span>}
+            </div>
+          );
+        })}
+      </div>
+      {showEdit && <PositionModal position={pos} onClose={()=>setShowEdit(false)}/>}
+    </div>
+  );
+}
+
+// ─── POSITION MODAL (ADD/EDIT) ──────────────────────────────────────────────
+function PositionModal({position, onClose}) {
+  const app = useApp();
+  const [form, setForm] = useState(position ? {
+    ticker: position.ticker, name: position.name, role: position.role, theme: position.theme,
+    buyPrice: position.buyPrice+'', currentPrice: position.currentPrice+'', shares: position.shares+''
+  } : {ticker:'',name:'',role:'Core',theme:'Technology',buyPrice:'',currentPrice:'',shares:''});
+
+  const upd = (k,v) => setForm({...form,[k]:v});
+  const valid = form.ticker && form.name && parseFloat(form.buyPrice)>0 && parseFloat(form.currentPrice)>0 && parseFloat(form.shares)>0;
+
+  const save = () => {
+    const data = {ticker:form.ticker.toUpperCase().trim(),name:form.name.trim(),role:form.role,theme:form.theme,
+      buyPrice:parseFloat(form.buyPrice),currentPrice:parseFloat(form.currentPrice),shares:parseFloat(form.shares)};
+    if (position) app.updatePosition(position.id||position.ticker, data);
+    else app.addPosition(data);
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e=>e.stopPropagation()}>
+        <div className="modal-title">{position ? 'Edit Position' : 'Add Position'}<button onClick={onClose} style={{background:'none',border:'none',color:'var(--text3)'}}><Icon name="x" size={20}/></button></div>
+        <div className="form-row"><label className="form-label">Ticker</label><input value={form.ticker} onChange={e=>upd('ticker',e.target.value)} placeholder="e.g. QQQ" style={{textTransform:'uppercase'}}/></div>
+        <div className="form-row"><label className="form-label">Name</label><input value={form.name} onChange={e=>upd('name',e.target.value)} placeholder="e.g. Nasdaq-100 ETF"/></div>
+        <div className="form-row"><label className="form-label">Role</label><select value={form.role} onChange={e=>upd('role',e.target.value)}>{['Core','Satellite','Hedge'].map(r => <option key={r}>{r}</option>)}</select></div>
+        <div className="form-row"><label className="form-label">Theme</label><select value={form.theme} onChange={e=>upd('theme',e.target.value)}>{['Technology','Broad Market','Healthcare','Commodities','Diversifiers','Hedges'].map(t => <option key={t}>{t}</option>)}</select></div>
+        <div className="form-row"><label className="form-label">Buy Price ($)</label><input type="number" step="0.01" value={form.buyPrice} onChange={e=>upd('buyPrice',e.target.value)}/></div>
+        <div className="form-row"><label className="form-label">Current Price ($)</label><input type="number" step="0.01" value={form.currentPrice} onChange={e=>upd('currentPrice',e.target.value)}/></div>
+        <div className="form-row"><label className="form-label">Shares</label><input type="number" step="0.01" value={form.shares} onChange={e=>upd('shares',e.target.value)}/></div>
+        {valid && (() => { const bp=parseFloat(form.buyPrice),cp=parseFloat(form.currentPrice),sh=parseFloat(form.shares); const pct=(cp-bp)/bp*100; return (
+          <div className="card" style={{background:'var(--bg3)',marginTop:8}}>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:13}}><span style={{color:'var(--text3)'}}>P&L %</span><span style={{fontWeight:700,color:pnlColor(pct)}}>{pnlSign(pct)}{fmtPct(pct)}</span></div>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:13,marginTop:4}}><span style={{color:'var(--text3)'}}>Value</span><span style={{fontWeight:700}}>{fmt$(cp*sh)}</span></div>
+          </div>
+        );})()}
+        <div className="form-actions"><button className="btn btn-secondary" style={{flex:1}} onClick={onClose}>Cancel</button><button className="btn btn-primary" style={{flex:1}} onClick={save} disabled={!valid}>Save</button></div>
+      </div>
+    </div>
+  );
+}
+
+// ─── PORTFOLIO TAB ──────────────────────────────────────────────────────────
+function PortfolioTab() {
+  const app = useApp();
+  const [theme, setTheme] = useState('All');
+  const [showAdd, setShowAdd] = useState(false);
+
+  const filtered = theme === 'All' ? app.positions : app.positions.filter(p => p.theme === theme);
+
+  const themeAllocs = useMemo(() => {
+    const total = Math.max(1, app.positionsValue);
+    const grouped = {};
+    app.positions.forEach(p => {
+      if (!grouped[p.theme]) grouped[p.theme] = 0;
+      grouped[p.theme] += p.currentPrice * p.shares;
+    });
+    return Object.entries(grouped).map(([t,v]) => ({theme:t, value:v, pct:v/total*100})).sort((a,b) => b.value-a.value);
+  }, [app.positions, app.positionsValue]);
+
+  return (
+    <div className="fade-in">
+      <div className="page-header"><div className="page-title">Portfolio</div><button className="refresh-btn" onClick={()=>setShowAdd(true)}><Icon name="plus" size={14}/> Add</button></div>
+
+      {/* Summary */}
+      <div className="stats-grid">
+        <div className="stat-card"><div className="stat-label">Invested</div><div className="stat-value mono" style={{fontSize:16}}>{fmt$(app.positionsCost)}</div></div>
+        <div className="stat-card"><div className="stat-label">Market Val</div><div className="stat-value mono" style={{fontSize:16}}>{fmt$(app.positionsValue)}</div></div>
+        <div className="stat-card"><div className="stat-label">Total P&L</div><div className="stat-value mono" style={{fontSize:16,color:pnlColor(app.totalPnL)}}>{pnlSign(app.totalPnL)}{fmt$(app.totalPnL)}</div></div>
+        <div className="stat-card"><div className="stat-label">Return</div><div className="stat-value mono" style={{fontSize:16,color:pnlColor(app.totalPnLPct)}}>{pnlSign(app.totalPnLPct)}{fmtPct(app.totalPnLPct)}</div></div>
+      </div>
+
+      {/* Theme Allocation */}
+      {themeAllocs.length > 0 && (
+        <div className="card">
+          <div className="card-title" style={{marginBottom:10}}>Theme Allocation</div>
+          <div className="divider"/>
+          {themeAllocs.map(a => (
+            <div key={a.theme} style={{marginBottom:8}}>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:13,marginBottom:3}}>
+                <span>{a.theme}</span>
+                <span><span style={{color:'var(--text3)',marginRight:6}}>{fmt$(a.value)}</span><span style={{fontWeight:700,color:a.pct>30?'var(--red)':'var(--text)'}}>{fmtPct(a.pct)}</span></span>
+              </div>
+              <div className="progress-bar" style={{height:5}}>
+                <div className="progress-fill" style={{width:Math.min(100,a.pct)+'%',background:a.pct>30?'var(--red)':'var(--blue)'}}/>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Filter */}
+      <div className="chip-row" style={{marginBottom:12}}>
+        {THEMES.map(t => <button key={t} className={`chip ${theme===t?'active':''}`} onClick={()=>setTheme(t)}>{t}</button>)}
+      </div>
+
+      {/* Positions */}
+      {filtered.map(pos => {
+        const sig = getSignal(pos);
+        const pct = getPnlPct(pos);
+        return (
+          <div key={pos.ticker+pos.buyPrice} className="card" style={{padding:12}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <div>
+                <div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontWeight:800}}>{pos.ticker}</span><RoleBadge role={pos.role}/></div>
+                <div style={{fontSize:10,color:'var(--text3)',marginTop:2}}>{pos.theme}</div>
+                <div style={{fontSize:11,color:'var(--text3)'}}>{pos.shares} shares @ ${pos.buyPrice.toFixed(2)}</div>
+              </div>
+              <div style={{textAlign:'right'}}>
+                <div className="mono" style={{fontWeight:700,fontSize:14}}>{fmt$(pos.currentPrice*pos.shares)}</div>
+                <div className="mono" style={{fontSize:12,fontWeight:700,color:pnlColor(pct)}}>{pnlSign(pct)}{fmtPct(pct)}</div>
+                <div style={{marginTop:3}}><SignalBadge signal={sig} compact/></div>
+              </div>
+            </div>
+            <div style={{display:'flex',gap:6,marginTop:8}}>
+              <button className="btn btn-secondary" style={{flex:1,padding:'6px 0',fontSize:11}} onClick={()=>{
+                const idx = app.positions.findIndex(p => p.ticker===pos.ticker && p.buyPrice===pos.buyPrice);
+                if (idx > -1 && confirm(`Delete ${pos.ticker}?`)) app.deletePosition(pos.id||pos.ticker);
+              }}><Icon name="trash" size={12} color="var(--red)"/></button>
+            </div>
+          </div>
+        );
+      })}
+
+      {showAdd && <PositionModal onClose={()=>setShowAdd(false)} position={null}/>}
+    </div>
+  );
+}
+
+// ─── MARKETS TAB ────────────────────────────────────────────────────────────
+function MarketsTab() {
+  const app = useApp();
+  const [news, setNews] = useState([]);
+  const [newsLoading, setNewsLoading] = useState(false);
+  const [newsTicker, setNewsTicker] = useState(0);
+
+  const tickers = app.positions.map(p => p.ticker);
+
+  const loadNews = async (ticker) => {
+    if (!ticker) return;
+    setNewsLoading(true);
+    try {
+      const r = await fetch(`/api/news?ticker=${ticker}`);
+      setNews(await r.json());
+    } catch(e) { setNews([]); }
+    setNewsLoading(false);
+  };
+
+  useEffect(() => { loadNews(tickers[0]); }, [app.positions.length]);
+  useEffect(() => { if (tickers[newsTicker]) loadNews(tickers[newsTicker]); }, [newsTicker]);
+
+  const sorted = useMemo(() => {
+    return app.positions.map(p => ({pos:p, q:app.quotes[p.ticker.toUpperCase()]})).filter(x=>x.q).sort((a,b) => Math.abs(b.q.changePct)-Math.abs(a.q.changePct));
+  }, [app.positions, app.quotes]);
+
+  const marketState = Object.values(app.quotes)[0]?.marketState || 'CLOSED';
+  const msLabel = {PRE:'Pre-Market',POST:'After Hours',REGULAR:'Market Open'}[marketState]||'Closed';
+  const msColor = marketState==='REGULAR'?'var(--green)':(marketState==='PRE'||marketState==='POST')?'var(--orange)':'var(--text3)';
+
+  const volumeAlerts = sorted.filter(x => x.q.avgVolume > 0 && x.q.volume/x.q.avgVolume >= 1.5);
+  const extHours = sorted.filter(x => x.q.preMarketPrice || x.q.postMarketPrice);
+
+  const upcomingEvents = ECON_CALENDAR.filter(e => daysUntil(e.date) >= 0).slice(0,10);
+  const catColors = {fed:'var(--purple)',earnings:'var(--blue)',economic:'var(--cyan)'};
+
+  return (
+    <div className="fade-in">
+      <div className="page-header">
+        <div className="page-title">Markets</div>
+        <button className="refresh-btn" onClick={app.refreshPrices} disabled={app.isRefreshing}><Icon name="refresh" size={14}/></button>
+      </div>
+
+      {Object.keys(app.quotes).length === 0 ? (
+        <div className="card" style={{textAlign:'center',padding:40}}><Spinner/><div style={{marginTop:8,fontSize:13,color:'var(--text3)'}}>Loading market data…</div></div>
+      ) : (
+        <>
+          {/* Daily Movers */}
+          <div className="card">
+            <div className="card-header">
+              <span className="card-title">📊 Today's Movers</span>
+              <span style={{display:'flex',alignItems:'center',gap:4}}><span className="status-dot" style={{background:msColor}}/><span style={{fontSize:10,fontWeight:700,color:msColor}}>{msLabel}</span></span>
+            </div>
+            <div className="divider"/>
+            {sorted.map(({pos,q}) => (
+              <div key={pos.ticker} className="list-item">
+                <div><div style={{fontWeight:700,fontSize:14}}>{pos.ticker}</div><div style={{fontSize:11,color:'var(--text3)'}}>{pos.name}</div></div>
+                <div style={{textAlign:'right'}}>
+                  <div className="mono" style={{fontSize:14,fontWeight:700}}>${q.price.toFixed(2)}</div>
+                  <span className="badge" style={{background:q.change>=0?'var(--green-bg)':'var(--red-bg)',color:q.change>=0?'var(--green)':'var(--red)',fontSize:11}}>
+                    {q.change>=0?'▲':'▼'} {q.change>=0?'+':''}{q.changePct.toFixed(2)}%
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Extended Hours */}
+          <div className="card">
+            <div className="card-title" style={{marginBottom:10}}>🌙 Extended Hours</div>
+            <div className="divider"/>
+            {extHours.length === 0 ? (
+              <div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>Extended hours data appears before 9:30 AM and after 4:00 PM ET.</div>
+            ) : extHours.map(({pos,q}) => {
+              const isPre = !!q.preMarketPrice;
+              const extP = q.preMarketPrice || q.postMarketPrice;
+              const extPct = ((extP-q.price)/q.price*100);
+              return (
+                <div key={pos.ticker} className="list-item">
+                  <div><div style={{fontWeight:700}}>{pos.ticker}</div><span className="badge badge-purple" style={{fontSize:9}}>{isPre?'Pre-Market':'After Hours'}</span></div>
+                  <div style={{textAlign:'right'}}><div className="mono" style={{fontWeight:700}}>${extP.toFixed(2)}</div><div className="mono" style={{fontSize:11,color:extPct>=0?'var(--green)':'var(--red)'}}>{extPct>=0?'+':''}{extPct.toFixed(2)}%</div></div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Volume Alerts */}
+          <div className="card">
+            <div className="card-header">
+              <span className="card-title">📈 Volume Alerts</span>
+              {volumeAlerts.length > 0 && <Badge type="orange">{volumeAlerts.length} alert{volumeAlerts.length>1?'s':''}</Badge>}
+            </div>
+            <div className="divider"/>
+            {volumeAlerts.length === 0 ? (
+              <div style={{display:'flex',alignItems:'center',gap:6,padding:'8px 0',fontSize:13,color:'var(--text3)'}}>✅ No unusual volume today.</div>
+            ) : volumeAlerts.map(({pos,q}) => {
+              const ratio = q.volume/q.avgVolume;
+              return (
+                <div key={pos.ticker} className="list-item">
+                  <div><div style={{fontWeight:700}}>{pos.ticker}</div><div style={{fontSize:11,color:'var(--text3)'}}>Vol {fmtVol(q.volume)} • Avg {fmtVol(q.avgVolume)}</div></div>
+                  <div style={{textAlign:'right'}}><div className="mono" style={{fontWeight:700,color:'var(--orange)'}}>{ratio.toFixed(1)}x avg</div><div style={{fontSize:11,color:q.changePct>=0?'var(--green)':'var(--red)'}}>{q.changePct>=0?'↑ Bullish':'↓ Bearish'} surge</div></div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* News */}
+          <div className="card">
+            <div className="card-title" style={{marginBottom:8}}>📰 News</div>
+            <div className="chip-row" style={{marginBottom:8}}>
+              {tickers.map((t,i) => <button key={t} className={`chip ${newsTicker===i?'active':''}`} onClick={()=>setNewsTicker(i)}>{t}</button>)}
+            </div>
+            <div className="divider"/>
+            {newsLoading ? <div style={{textAlign:'center',padding:16}}><Spinner/></div> :
+             news.length === 0 ? <div style={{fontSize:12,color:'var(--text3)',padding:'8px 0'}}>No recent news found.</div> :
+             news.map(n => (
+              <a key={n.id} href={n.url} target="_blank" rel="noopener" style={{textDecoration:'none',color:'inherit',display:'block',padding:'8px 0',borderBottom:'1px solid var(--border)'}}>
+                <div style={{fontSize:13,lineHeight:1.4,marginBottom:3}}>{n.title}</div>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:10,color:'var(--text3)'}}>
+                  <span>{n.publisher}</span>
+                  <span style={{display:'flex',alignItems:'center',gap:4}}>{timeAgo(n.publishedAt)} <Icon name="link" size={10} color="var(--text3)"/></span>
+                </div>
+              </a>
+            ))}
+          </div>
+
+          {/* Economic Calendar */}
+          <div className="card">
+            <div className="card-title" style={{marginBottom:10}}>📅 Economic Calendar</div>
+            <div className="divider"/>
+            {upcomingEvents.map(ev => {
+              const d = new Date(ev.date+'T00:00:00');
+              const du = daysUntil(ev.date);
+              const isToday = du===0;
+              return (
+                <div key={ev.date+ev.title} style={{display:'flex',gap:10,padding:'8px 0',borderBottom:'1px solid var(--border)',alignItems:'flex-start'}}>
+                  <div style={{minWidth:38,textAlign:'center'}}>
+                    <div style={{background:isToday?'var(--red)':catColors[ev.cat]||'var(--blue)',color:'#fff',fontSize:8,fontWeight:700,padding:'2px 0',borderRadius:'5px 5px 0 0',textTransform:'uppercase'}}>{d.toLocaleDateString('en',{month:'short'})}</div>
+                    <div style={{background:'var(--bg4)',fontSize:14,fontWeight:700,padding:'3px 0',borderRadius:'0 0 5px 5px'}}>{d.getDate()}</div>
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:13,lineHeight:1.3}}>{ev.title}</div>
+                    <div style={{display:'flex',alignItems:'center',gap:6,marginTop:3}}>
+                      <span style={{fontSize:10,fontWeight:700,color:catColors[ev.cat]}}>{ev.cat.toUpperCase()}</span>
+                      <span style={{width:4,height:4,borderRadius:'50%',background:ev.impact==='high'?'var(--red)':'var(--orange)'}}/>
+                      <span style={{fontSize:10,color:ev.impact==='high'?'var(--red)':'var(--orange)'}}>{ev.impact==='high'?'High':'Med'} Impact</span>
+                      <span style={{marginLeft:'auto',fontSize:10,fontWeight:600,color:isToday?'var(--red)':du===1?'var(--orange)':'var(--text3)'}}>{isToday?'TODAY':du===1?'Tomorrow':'In '+du+'d'}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── WATCHLIST TAB ──────────────────────────────────────────────────────────
+function WatchlistTab() {
+  const [search, setSearch] = useState('');
+  const [theme, setTheme] = useState('All');
+  const [role, setRole] = useState(null);
+  const [selected, setSelected] = useState(null);
+
+  const filtered = useMemo(() => {
+    let list = WATCHLIST;
+    if (theme !== 'All') list = list.filter(w => w.theme === theme);
+    if (role) list = list.filter(w => w.role === role);
+    if (search) list = list.filter(w => w.ticker.toLowerCase().includes(search.toLowerCase()) || w.name.toLowerCase().includes(search.toLowerCase()));
+    return list;
+  }, [search, theme, role]);
+
+  const grouped = useMemo(() => {
+    const g = {};
+    filtered.forEach(w => { if (!g[w.theme]) g[w.theme]=[]; g[w.theme].push(w); });
+    return g;
+  }, [filtered]);
+
+  const themeOrder = ['Broad Market','Technology','Healthcare','Commodities','Diversifiers','Hedges'];
+  const themeIcons = {'Broad Market':'📊','Technology':'💻','Healthcare':'🏥','Commodities':'🏗️','Diversifiers':'🔄','Hedges':'🛡️'};
+
+  if (selected) return (
+    <div className="fade-in">
+      <button onClick={()=>setSelected(null)} style={{display:'flex',alignItems:'center',gap:4,background:'none',border:'none',color:'var(--blue)',fontSize:13,fontWeight:600,marginBottom:12,padding:0}}><Icon name="back" size={16} color="var(--blue)"/> Back</button>
+      <div className="card">
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+          <div><div style={{fontSize:22,fontWeight:800}}>{selected.ticker}</div><div style={{fontSize:13,color:'var(--text2)'}}>{selected.name}</div><div style={{fontSize:11,color:'var(--text3)'}}>{selected.theme}</div></div>
+          <RoleBadge role={selected.role}/>
+        </div>
+        {selected.notes && <div style={{marginTop:8,fontSize:13,color:'var(--blue)',background:'var(--blue-bg)',padding:8,borderRadius:6}}>{selected.notes}</div>}
+      </div>
+      <div className="card">
+        <div className="card-title" style={{marginBottom:10}}>🎯 Trading Triggers</div>
+        <div className="divider"/>
+        {[{icon:'↓',color:'var(--green)',label:'ADD Trigger',value:selected.addTrigger},
+          {icon:'↑',color:'var(--orange)',label:'TRIM Trigger',value:selected.trimTrigger},
+          {icon:'⚠',color:'var(--red)',label:'Stop-Loss',value:selected.stopLoss}
+        ].map((t,i) => (
+          <div key={i} style={{display:'flex',gap:10,alignItems:'flex-start',padding:'10px 0',borderBottom:i<2?'1px solid var(--border)':'none'}}>
+            <span style={{fontSize:18,color:t.color}}>{t.icon}</span>
+            <div><div style={{fontSize:11,fontWeight:700,color:'var(--text3)'}}>{t.label}</div><div style={{fontSize:14}}>{t.value}</div></div>
+          </div>
+        ))}
+      </div>
+      <div className="card">
+        <div className="card-title" style={{marginBottom:10}}>ℹ️ Position Rules for {selected.role}</div>
+        <div className="divider"/>
+        {[['Add trigger',`${Math.round(ROLES[selected.role].addPct*100)}% pullback from 4-wk high`],
+          ['First trim',`+${Math.round(ROLES[selected.role].trimPct*100)}% from buy → sell 20%`],
+          ['Second trim',`+${Math.round((ROLES[selected.role].trimPct+0.10)*100)}% from buy → sell 15%`],
+          ['Stop-loss','-20% from buy → exit full position'],
+          ['Buy size',`${(ROLES[selected.role].addSize*100).toFixed(1)}% of portfolio`]
+        ].map(([l,v],i) => (
+          <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',fontSize:13}}>
+            <span style={{color:'var(--text3)'}}>{l}</span>
+            <span style={{fontWeight:600,color:l==='Stop-loss'?'var(--red)':'var(--text)'}}>{v}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="fade-in">
+      <div className="page-header"><div className="page-title">Watchlist</div></div>
+
+      {/* Search */}
+      <div style={{position:'relative',marginBottom:10}}>
+        <span style={{position:'absolute',left:10,top:9,color:'var(--text3)'}}><Icon name="search" size={16}/></span>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search ticker or name…" style={{paddingLeft:32}}/>
+        {search && <button onClick={()=>setSearch('')} style={{position:'absolute',right:10,top:9,background:'none',border:'none',color:'var(--text3)'}}><Icon name="x" size={16}/></button>}
+      </div>
+
+      {/* Theme filter */}
+      <div className="chip-row" style={{marginBottom:8}}>
+        {['All','Broad Market','Technology','Healthcare','Commodities','Diversifiers','Hedges'].map(t => (
+          <button key={t} className={`chip ${theme===t?'active':''}`} onClick={()=>setTheme(t)}>{t}</button>
+        ))}
+      </div>
+
+      {/* Role filter */}
+      <div style={{display:'flex',gap:6,alignItems:'center',marginBottom:12}}>
+        <span style={{fontSize:11,color:'var(--text3)'}}>Role:</span>
+        <button className={`chip ${!role?'active':''}`} onClick={()=>setRole(null)}>All</button>
+        {['Core','Satellite','Hedge'].map(r => (
+          <button key={r} className={`chip ${role===r?'active':''}`} style={role===r?{}:{color:ROLES[r].color,background:ROLES[r].color+'22'}} onClick={()=>setRole(role===r?null:r)}>{r}</button>
+        ))}
+        <span style={{marginLeft:'auto',fontSize:10,color:'var(--text3)'}}>{filtered.length}</span>
+      </div>
+
+      {/* List */}
+      {themeOrder.filter(t => grouped[t]).map(t => (
+        <div key={t}>
+          <div style={{display:'flex',alignItems:'center',gap:6,fontSize:13,fontWeight:700,padding:'8px 0',color:'var(--text2)'}}>
+            <span>{themeIcons[t]}</span><span>{t}</span><span style={{fontSize:11,color:'var(--text3)',fontWeight:400}}>({grouped[t].length})</span>
+          </div>
+          {grouped[t].map(w => (
+            <div key={w.ticker} className="card" style={{cursor:'pointer',padding:12}} onClick={()=>setSelected(w)}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                <div>
+                  <div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontWeight:800}}>{w.ticker}</span><RoleBadge role={w.role}/></div>
+                  <div style={{fontSize:11,color:'var(--text3)',marginTop:1}}>{w.name}</div>
+                  {w.notes && <div style={{fontSize:10,color:'var(--blue)',marginTop:2}}>{w.notes}</div>}
+                </div>
+                <div style={{textAlign:'right',minWidth:100}}>
+                  <div style={{fontSize:10,color:'var(--text3)',display:'flex',alignItems:'center',justifyContent:'flex-end',gap:3}}>↓ Add:</div>
+                  <div style={{fontSize:11,color:'var(--text2)'}}>{w.addTrigger}</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── MAIN APP ───────────────────────────────────────────────────────────────
+function App() {
+  const [tab, setTab] = useState('dashboard');
+
+  const tabs = [
+    {id:'dashboard',label:'Dashboard',icon:'dashboard'},
+    {id:'regime',label:'Regime',icon:'regime'},
+    {id:'signals',label:'Signals',icon:'signals'},
+    {id:'portfolio',label:'Portfolio',icon:'portfolio'},
+    {id:'markets',label:'Markets',icon:'markets'},
+    {id:'watchlist',label:'Watchlist',icon:'watchlist'},
+  ];
+
+  return (
+    <AppProvider>
+      <div className="app">
+        <div className="main">
+          {tab==='dashboard' && <DashboardTab/>}
+          {tab==='regime' && <RegimeTab/>}
+          {tab==='signals' && <SignalsTab/>}
+          {tab==='portfolio' && <PortfolioTab/>}
+          {tab==='markets' && <MarketsTab/>}
+          {tab==='watchlist' && <WatchlistTab/>}
+        </div>
+        <div className="tab-bar">
+          {tabs.map(t => (
+            <button key={t.id} className={`tab-btn ${tab===t.id?'active':''}`} onClick={()=>setTab(t.id)}>
+              <Icon name={t.icon} size={20} color={tab===t.id?'var(--blue)':'var(--text3)'}/>
+              <span>{t.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </AppProvider>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
