@@ -20,39 +20,19 @@ export default async function handler(req, res) {
     }
   }
 
-  // 1. SPY vs 200-day MA — fetch 1 year of daily data and calculate MA manually
+  // 1. SPY vs 200-day MA
   try {
-    const spy = await fetchYahoo('SPY', '1y');
-    const result = spy?.chart?.result?.[0];
-    if (result) {
-      const meta = result.meta;
-      const closes = result.indicators?.quote?.[0]?.close?.filter(c => c != null) || [];
-      const price = meta?.regularMarketPrice || (closes.length > 0 ? closes[closes.length - 1] : null);
-      
-      // Calculate 200-day MA from closing prices
-      let ma200 = null;
-      if (closes.length >= 200) {
-        const last200 = closes.slice(-200);
-        ma200 = last200.reduce((sum, c) => sum + c, 0) / 200;
-      } else if (closes.length >= 50) {
-        // Fallback: use all available data if less than 200 days
-        ma200 = closes.reduce((sum, c) => sum + c, 0) / closes.length;
-      }
-      
-      // Also try metadata as backup
-      if (ma200 === null) {
-        ma200 = meta?.twoHundredDayAverage || meta?.fiftyDayAverage || null;
-      }
-      
-      if (price != null && ma200 != null) {
-        results.spy = {
-          price: price,
-          ma200: Math.round(ma200 * 100) / 100,
-          above: price > ma200,
-          pctFromMA: ((price - ma200) / ma200 * 100),
-          dataPoints: closes.length
-        };
-      }
+    const spy = await fetchYahoo('SPY', '1d');
+    const meta = spy?.chart?.result?.[0]?.meta;
+    if (meta) {
+      const price = meta.regularMarketPrice;
+      const ma200 = meta.twoHundredDayAverage;
+      results.spy = {
+        price: price,
+        ma200: ma200,
+        above: price > ma200,
+        pctFromMA: ma200 > 0 ? ((price - ma200) / ma200 * 100) : 0
+      };
     }
   } catch (e) { errors.push('SPY fetch failed'); }
 

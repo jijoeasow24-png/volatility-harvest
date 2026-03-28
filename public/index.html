@@ -226,18 +226,8 @@ function MonthlyActionPlan(){
   const app=useApp();const steps=[];let n=0;
   n++;if(app.regime==='Not Assessed'){steps.push({num:n,color:'var(--blue)',title:'Complete Regime Check',desc:'Go to Regime tab — or wait for auto-detection',key:'regime',urgent:true});}else{steps.push({num:n,color:'var(--green)',title:`Regime: ${app.regime}`,desc:REGIMES[app.regime].tagline,key:'regime_done',info:true});}
   if(app.circuitLevel.name!=='Normal'){n++;steps.push({num:n,color:app.circuitLevel.color,title:`${app.circuitLevel.name}`,desc:app.circuitLevel.actions[0],key:'circuit',urgent:true});}
-  // Stop-loss exits (always show)
   app.positions.filter(p=>getSignal(p).name.includes('STOP')).forEach(p=>{n++;steps.push({num:n,color:'#b91c1c',title:`EXIT ${p.ticker} — Stop-Loss`,desc:`Sell ALL ${p.shares} shares. Down ${getPnlPct(p).toFixed(1)}%.`,key:`exit_${p.ticker}`,urgent:true});});
-  // HARD STOP: exit ALL satellites (even if not at stop-loss)
-  const isHardStop = app.circuitLevel.name==='HARD STOP';
-  const isOrangeOrWorse = ['Orange Alert','Red Alert','HARD STOP'].includes(app.circuitLevel.name);
-  if (isOrangeOrWorse) {
-    app.positions.filter(p=>p.role==='Satellite'&&!getSignal(p).name.includes('STOP')).forEach(p=>{n++;steps.push({num:n,color:'var(--red)',title:`EXIT ${p.ticker} — Sell ALL (${p.role})`,desc:`Circuit breaker requires selling all satellite positions. Sell ${p.shares} shares (~$${Math.round(p.currentPrice*p.shares)}).`,key:`cb_exit_${p.ticker}`,urgent:true});});
-  }
-  // Trim signals — only show when circuit breaker is Normal or Yellow (not Orange/Red/HARD STOP)
-  if (!isOrangeOrWorse) {
-    app.positions.filter(p=>getSignal(p).name.includes('TRIM')).forEach(p=>{n++;const s=getSignal(p);const pct=s.name.includes('STRONG')?35:20;const sh=Math.max(1,Math.round(p.shares*pct/100));steps.push({num:n,color:'var(--orange)',title:`TRIM ${p.ticker} — sell ${pct}%`,desc:`Sell ${sh} shares (~$${Math.round(sh*p.currentPrice)})`,key:`trim_${p.ticker}`});});
-  }
+  app.positions.filter(p=>getSignal(p).name.includes('TRIM')).forEach(p=>{n++;const s=getSignal(p);const pct=s.name.includes('STRONG')?35:20;const sh=Math.max(1,Math.round(p.shares*pct/100));steps.push({num:n,color:'var(--orange)',title:`TRIM ${p.ticker} — sell ${pct}%`,desc:`Sell ${sh} shares (~$${Math.round(sh*p.currentPrice)})`,key:`trim_${p.ticker}`});});
   if(app.regime!=='Not Assessed'&&app.circuitLevel.name!=='HARD STOP'&&app.circuitLevel.name!=='Red Alert'){REGIMES[app.regime].plan.forEach((pl,i)=>{n++;steps.push({num:n,color:'var(--green)',title:`Deploy ${pl.amount} → ${pl.target}`,desc:pl.label?`${pl.label} per ${app.regime}`:'Per regime plan',key:`deploy_${i}`});});}else if(app.circuitLevel.name==='Red Alert'||app.circuitLevel.name==='HARD STOP'){n++;steps.push({num:n,color:'var(--red)',title:'STOP — Do NOT deploy $2K',desc:`Circuit breaker at ${app.circuitLevel.name}`,key:'no_deploy',urgent:true});}
   if(app.circuitLevel.name==='Normal'){app.positions.filter(p=>getSignal(p).name.includes('ADD')).forEach(p=>{n++;const r=ROLES[p.role];steps.push({num:n,color:'var(--green)',title:`Consider adding ${p.ticker}`,desc:`Buy ~$${Math.round(app.portfolioTotal*r.addSize)} (${(r.addSize*100).toFixed(1)}%). Down ${getPnlPct(p).toFixed(1)}%`,key:`add_${p.ticker}`});});}
   const mo=new Date().toLocaleString('en',{month:'long',year:'numeric'});
@@ -343,7 +333,7 @@ function RegimeTab(){
     </div>
 
     {/* Score */}
-    <div className="card"><div style={{display:'flex',alignItems:'center',gap:12}}><div style={{display:'flex',gap:6}}>{[0,1,2,3,4].map(i=><div key={i} style={{width:24,height:24,borderRadius:'50%',background:i<yesCount?'var(--green)':'var(--bg4)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,color:i<yesCount?'#fff':'var(--text3)'}}>{i<yesCount?'✓':i+1}</div>)}</div><div style={{flex:1,textAlign:'right'}}><div style={{fontSize:18,fontWeight:800,color:yesCount>=3?'var(--green)':'var(--red)'}}>{yesCount}/5 YES</div><div style={{fontSize:11,color:'var(--text3)'}}>{yesCount>=3?'→ Risk-On baseline':'→ Risk-Off baseline'}</div></div></div>{(d?.answers?.oilShock||d?.answers?.inflation||d?.answers?.recession)&&<><div className="divider"/><div style={{display:'flex',alignItems:'center',gap:6,padding:'4px 0'}}><span style={{fontSize:14}}>⚠️</span><span style={{fontSize:12,color:'var(--orange)',fontWeight:600}}>Override active — {d?.answers?.oilShock?'Oil Shock':d?.answers?.inflation?'Inflation Spike':'Recession Scare'} supersedes the {yesCount>=3?'Risk-On':'Risk-Off'} base score</span></div></>}</div>
+    <div className="card"><div style={{display:'flex',alignItems:'center',gap:12}}><div style={{display:'flex',gap:6}}>{[0,1,2,3,4].map(i=><div key={i} style={{width:24,height:24,borderRadius:'50%',background:i<yesCount?'var(--green)':'var(--bg4)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,color:i<yesCount?'#fff':'var(--text3)'}}>{i<yesCount?'✓':i+1}</div>)}</div><div style={{flex:1,textAlign:'right'}}><div style={{fontSize:18,fontWeight:800,color:yesCount>=3?'var(--green)':'var(--red)'}}>{yesCount}/5 YES</div><div style={{fontSize:11,color:'var(--text3)'}}>{yesCount>=3?'→ Risk-On':'→ Risk-Off'}</div></div></div></div>
 
     {/* Override modifiers - still manual */}
     <div className="card" style={{padding:0}}>
@@ -434,112 +424,9 @@ function WatchlistTab(){
 }
 
 // ─── MAIN APP ───────────────────────────────────────────────────────────────
-// ─── INTEL TAB ──────────────────────────────────────────────────────────────
-function IntelTab(){
-  const app=useApp();
-  const [intel,setIntel]=useState(null);
-  const [loading,setLoading]=useState(true);
-  const [lastUpdate,setLastUpdate]=useState(null);
-
-  const fetchIntel=async()=>{
-    setLoading(true);
-    try{const r=await fetch('/api/intelligence');const d=await r.json();setIntel(d);setLastUpdate(new Date());}catch(e){console.error(e);}
-    setLoading(false);
-  };
-  useEffect(()=>{fetchIntel();},[]);
-
-  if(loading||!intel)return<div className="fade-in"><div className="page-header"><div className="page-title">Intel</div></div><div className="card" style={{textAlign:'center',padding:40}}><Spinner/><div style={{marginTop:8,fontSize:13,color:'var(--text3)'}}>Scanning markets…</div></div></div>;
-
-  const prioColors={high:'var(--red)',medium:'var(--orange)',low:'var(--green)'};
-  const sectorBarMax=Math.max(...intel.sectors.map(s=>Math.abs(s.monthPct)),1);
-
-  return<div className="fade-in">
-    <div className="page-header"><div><div className="page-title">Market Intel</div><div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>Updated {lastUpdate?.toLocaleTimeString()}</div></div><div className="header-actions"><button className="theme-toggle" onClick={app.toggleTheme}>{app.theme==='dark'?<Icon name="sun" size={16}/>:<Icon name="moon" size={16}/>}</button><button className="refresh-btn" onClick={fetchIntel}><Icon name="refresh" size={14}/></button></div></div>
-
-    {/* Daily Brief */}
-    <div className="card" style={{background:'linear-gradient(135deg,var(--bg2),var(--bg3))',border:'2px solid var(--cyan)'}}>
-      <div className="card-header"><span className="card-title">⚡ Daily Action Brief</span><span className="auto-badge"><Icon name="zap" size={10} color="#fff"/> LIVE</span></div>
-      <div className="divider"/>
-      {intel.brief.map((b,i)=><div key={i} style={{display:'flex',gap:10,padding:'10px 0',borderBottom:i<intel.brief.length-1?'1px solid var(--border)':'none',alignItems:'flex-start'}}>
-        <span style={{fontSize:20,flexShrink:0}}>{b.icon}</span>
-        <div style={{flex:1}}>
-          <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:2}}><span style={{fontSize:13,fontWeight:700}}>{b.title}</span><span style={{width:6,height:6,borderRadius:'50%',background:prioColors[b.priority]||'var(--text3)'}}/></div>
-          <div style={{fontSize:12,color:'var(--text2)',lineHeight:1.5}}>{b.text}</div>
-        </div>
-      </div>)}
-    </div>
-
-    {/* Sector Momentum */}
-    <div className="card">
-      <div className="card-header"><span className="card-title">📊 Sector Momentum (30d)</span><Badge type={intel.rotation.signal==='defensive'?'orange':intel.rotation.signal==='risk_on'?'green':'blue'}>{intel.rotation.signal==='defensive'?'Defensive':intel.rotation.signal==='risk_on'?'Risk-On':'Neutral'}</Badge></div>
-      <div className="divider"/>
-      <div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'var(--text3)',marginBottom:8}}>
-        <span>Offensive avg: {intel.rotation.offensiveAvg}%</span>
-        <span>Defensive avg: {intel.rotation.defensiveAvg}%</span>
-      </div>
-      {intel.sectors.map(s=>{
-        const isPos=s.monthPct>=0;const barW=Math.min(100,(Math.abs(s.monthPct)/sectorBarMax)*100);
-        return<div key={s.sym} style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
-          <span style={{fontSize:14,width:20}}>{s.emoji}</span>
-          <span style={{fontSize:12,fontWeight:600,width:40}}>{s.sym}</span>
-          <div style={{flex:1,height:16,background:'var(--bg4)',borderRadius:3,overflow:'hidden',position:'relative',display:'flex',justifyContent:isPos?'flex-start':'flex-end'}}>
-            <div style={{width:barW+'%',height:'100%',background:isPos?'var(--green)':'var(--red)',borderRadius:3,opacity:.7}}/>
-          </div>
-          <span className="mono" style={{fontSize:12,fontWeight:700,width:55,textAlign:'right',color:isPos?'var(--green)':'var(--red)'}}>{isPos?'+':''}{s.monthPct.toFixed(1)}%</span>
-          <span className="mono" style={{fontSize:10,color:'var(--text3)',width:45,textAlign:'right'}}>{s.weekPct>=0?'+':''}{s.weekPct.toFixed(1)}%w</span>
-        </div>;
-      })}
-      <div className="divider"/>
-      <div style={{fontSize:11,color:'var(--text3)'}}>Market breadth: {intel.breadth.bullish} sectors up, {intel.breadth.bearish} down</div>
-    </div>
-
-    {/* Smart Money Signals */}
-    {intel.smartSignals.length>0&&<div className="card">
-      <div className="card-header"><span className="card-title">🧠 Smart Money Signals</span><Badge type="purple">{intel.smartSignals.length} active</Badge></div>
-      <div className="divider"/>
-      {intel.smartSignals.map(s=><div key={s.ticker} style={{padding:'10px 0',borderBottom:'1px solid var(--border)'}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-          <div style={{display:'flex',alignItems:'center',gap:8}}><span style={{fontSize:15,fontWeight:800}}>{s.ticker}</span><span className="mono" style={{fontSize:13}}>${s.price.toFixed(2)}</span></div>
-          <span className="mono" style={{fontSize:13,fontWeight:700,color:s.changePct>=0?'var(--green)':'var(--red)'}}>{s.changePct>=0?'+':''}{s.changePct.toFixed(1)}%</span>
-        </div>
-        {s.signals.map((sig,i)=>{
-          const sigColors={volume:'var(--orange)',breakout:'var(--green)',breakdown:'var(--red)',golden:'var(--green)',death:'var(--red)',dip:'var(--blue)',surge:'var(--purple)'};
-          const sigIcons={volume:'📊',breakout:'🚀',breakdown:'⚠️',golden:'✨',death:'💀',dip:'🎯',surge:'📈'};
-          return<div key={i} style={{display:'flex',alignItems:'center',gap:6,marginBottom:3,marginLeft:8}}>
-            <span style={{fontSize:12}}>{sigIcons[sig.type]||'•'}</span>
-            <span style={{fontSize:11,color:sigColors[sig.type]||'var(--text2)'}}>{sig.text}</span>
-          </div>;
-        })}
-      </div>)}
-    </div>}
-
-    {/* What To Do Now */}
-    <div className="card" style={{background:'var(--blue-bg)',border:'1px solid var(--blue)'}}>
-      <div className="card-title" style={{marginBottom:10}}>🎯 What Smart Money Is Doing</div>
-      <div className="divider"/>
-      {intel.rotation.signal==='defensive'?<>
-        <div style={{fontSize:13,marginBottom:8}}>Institutional money is rotating into defensive assets. The market is pricing in risk.</div>
-        <div style={{fontSize:13,marginBottom:4}}>✅ <b>Buy:</b> GLD, XLV, XLP, XLU — defensive sectors leading</div>
-        <div style={{fontSize:13,marginBottom:4}}>⏸️ <b>Hold:</b> Core positions — don't panic sell</div>
-        <div style={{fontSize:13}}>❌ <b>Avoid:</b> New speculative positions, leveraged bets</div>
-      </>:intel.rotation.signal==='risk_on'?<>
-        <div style={{fontSize:13,marginBottom:8}}>Growth and cyclical sectors leading. Smart money is adding risk.</div>
-        <div style={{fontSize:13,marginBottom:4}}>✅ <b>Buy:</b> QQQ, XLK, SMH — tech/growth leading</div>
-        <div style={{fontSize:13,marginBottom:4}}>⏸️ <b>Hold:</b> Core tech — momentum is your friend</div>
-        <div style={{fontSize:13}}>❌ <b>Avoid:</b> Over-concentrating, ignoring stop-losses</div>
-      </>:<>
-        <div style={{fontSize:13,marginBottom:8}}>No clear rotation direction. Markets are undecided.</div>
-        <div style={{fontSize:13,marginBottom:4}}>✅ <b>Buy:</b> Only on strong dips (-7%+) in core holdings</div>
-        <div style={{fontSize:13,marginBottom:4}}>⏸️ <b>Hold:</b> Current positions — wait for clarity</div>
-        <div style={{fontSize:13}}>❌ <b>Avoid:</b> Overtrading — when in doubt, do nothing</div>
-      </>}
-    </div>
-  </div>;
-}
-
-function App(){const [tab,setTab]=useState('dashboard');const tabs=[{id:'dashboard',label:'Dashboard',icon:'dashboard'},{id:'intel',label:'Intel',icon:'zap'},{id:'regime',label:'Regime',icon:'regime'},{id:'signals',label:'Signals',icon:'signals'},{id:'portfolio',label:'Portfolio',icon:'portfolio'},{id:'markets',label:'Markets',icon:'markets'}];
+function App(){const [tab,setTab]=useState('dashboard');const tabs=[{id:'dashboard',label:'Dashboard',icon:'dashboard'},{id:'regime',label:'Regime',icon:'regime'},{id:'signals',label:'Signals',icon:'signals'},{id:'portfolio',label:'Portfolio',icon:'portfolio'},{id:'markets',label:'Markets',icon:'markets'},{id:'watchlist',label:'Watch',icon:'watchlist'}];
 return<AppProvider><AppContent tab={tab} setTab={setTab} tabs={tabs}/></AppProvider>;}
-function AppContent({tab,setTab,tabs}){const app=useApp();return<div className="app">{app.notification&&<div style={{position:'fixed',top:0,left:0,right:0,zIndex:200,padding:12,background:'linear-gradient(135deg,#b91c1c,#dc2626)',color:'#fff',fontSize:13,fontWeight:600,display:'flex',justifyContent:'space-between'}}><span>{app.notification.text}</span><button onClick={()=>app.setNotification(null)} style={{background:'none',border:'none',color:'#fff',fontWeight:700}}>✕</button></div>}<div className="main">{tab==='dashboard'&&<DashboardTab/>}{tab==='intel'&&<IntelTab/>}{tab==='regime'&&<RegimeTab/>}{tab==='signals'&&<SignalsTab/>}{tab==='portfolio'&&<PortfolioTab/>}{tab==='markets'&&<MarketsTab/>}</div><div className="tab-bar">{tabs.map(t=><button key={t.id} className={`tab-btn ${tab===t.id?'active':''}`} onClick={()=>setTab(t.id)}><Icon name={t.icon} size={20} color={tab===t.id?'var(--blue)':'var(--text3)'}/><span>{t.label}</span></button>)}</div></div>;}
+function AppContent({tab,setTab,tabs}){const app=useApp();return<div className="app">{app.notification&&<div style={{position:'fixed',top:0,left:0,right:0,zIndex:200,padding:12,background:'linear-gradient(135deg,#b91c1c,#dc2626)',color:'#fff',fontSize:13,fontWeight:600,display:'flex',justifyContent:'space-between'}}><span>{app.notification.text}</span><button onClick={()=>app.setNotification(null)} style={{background:'none',border:'none',color:'#fff',fontWeight:700}}>✕</button></div>}<div className="main">{tab==='dashboard'&&<DashboardTab/>}{tab==='regime'&&<RegimeTab/>}{tab==='signals'&&<SignalsTab/>}{tab==='portfolio'&&<PortfolioTab/>}{tab==='markets'&&<MarketsTab/>}{tab==='watchlist'&&<WatchlistTab/>}</div><div className="tab-bar">{tabs.map(t=><button key={t.id} className={`tab-btn ${tab===t.id?'active':''}`} onClick={()=>setTab(t.id)}><Icon name={t.icon} size={20} color={tab===t.id?'var(--blue)':'var(--text3)'}/><span>{t.label}</span></button>)}</div></div>;}
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
