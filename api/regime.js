@@ -6,7 +6,6 @@ export default async function handler(req, res) {
   const results = {};
   const errors = [];
 
-  // Helper to fetch Yahoo Finance data
   async function fetchYahoo(symbol, range = '1d') {
     try {
       const url = `https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=${range}`;
@@ -20,19 +19,36 @@ export default async function handler(req, res) {
     }
   }
 
-  // 1. SPY vs 200-day MA
+  // 1. SPY vs 200-day MA — fetch 1 year of daily data and calculate MA manually
   try {
-    const spy = await fetchYahoo('SPY', '1d');
-    const meta = spy?.chart?.result?.[0]?.meta;
-    if (meta) {
-      const price = meta.regularMarketPrice;
-      const ma200 = meta.twoHundredDayAverage;
-      results.spy = {
-        price: price,
-        ma200: ma200,
-        above: price > ma200,
-        pctFromMA: ma200 > 0 ? ((price - ma200) / ma200 * 100) : 0
-      };
+    const spy = await fetchYahoo('SPY', '1y');
+    const result = spy?.chart?.result?.[0];
+    if (result) {
+      const meta = result.meta;
+      const closes = result.indicators?.quote?.[0]?.close?.filter(c => c != null) || [];
+      const price = meta?.regularMarketPrice || (closes.length > 0 ? closes[closes.length - 1] : null);
+      
+      let ma200 = null;
+      if (closes.length >= 200) {
+        const last200 = closes.slice(-200);
+        ma200 = last200.reduce((sum, c) => sum + c, 0) / 200;
+      } else if (closes.length >= 50) {
+        ma200 = closes.reduce((sum, c) => sum + c, 0) / closes.length;
+      }
+      
+      if (ma200 === null) {
+        ma200 = meta?.twoHundredDayAverage || meta?.fiftyDayAverage || null;
+      }
+      
+      if (price != null && ma200 != null) {
+        results.spy = {
+          price: price,
+          ma200: Math.round(ma200 * 100) / 100,
+          above: price > ma200,
+          pctFromMA: ((price - ma200) / ma200 * 100),
+          dataPoints: closes.length
+        };
+      }
     }
   } catch (e) { errors.push('SPY fetch failed'); }
 
@@ -69,7 +85,7 @@ export default async function handler(req, res) {
           monthAgo: monthAgo,
           change30d: change,
           changePct30d: changePct,
-          stable: Math.abs(changePct) < 5  // <5% relative change in yields = stable
+          stable: Math.abs(changePct) < 5
         };
       }
     }
@@ -91,7 +107,7 @@ export default async function handler(req, res) {
           monthAgo: monthAgo,
           changePct30d: changePct,
           stable: Math.abs(changePct) < 15,
-          shock: Math.abs(changePct) >= 20  // ±20% = oil shock override
+          shock: Math.abs(changePct) >= 20
         };
       }
     }
@@ -105,11 +121,9 @@ export default async function handler(req, res) {
       const closes = result.indicators?.quote?.[0]?.close?.filter(c => c != null) || [];
       const current = closes.length > 0 ? closes[closes.length - 1] : null;
       const monthAgo = closes.length > 0 ? closes[0] : null;
-      const meta = result.meta;
       
       if (current != null && monthAgo != null) {
         const changePct = ((current - monthAgo) / monthAgo) * 100;
-        // DXY is "not spiking" if it hasn't risen more than 3% in 30 days
         results.dxy = {
           current: current,
           monthAgo: monthAgo,
@@ -120,22 +134,19 @@ export default async function handler(req, res) {
     }
   } catch (e) { errors.push('DXY fetch failed'); }
 
-  // Compute regime answers
   const answers = {
     spy200: results.spy?.above ?? false,
     vix20: results.vix?.below20 ?? false,
     yields: results.yields?.stable ?? false,
     oil: results.oil?.stable ?? false,
     dxy: results.dxy?.notSpiking ?? false,
-    // Override modifiers
     oilShock: results.oil?.shock ?? false,
-    inflation: false,  // Cannot be reliably auto-detected from price data alone
-    recession: false   // Cannot be reliably auto-detected from price data alone
+    inflation: false,
+    recession: false
   };
 
   const yesCount = [answers.spy200, answers.vix20, answers.yields, answers.oil, answers.dxy].filter(Boolean).length;
 
-  // Compute regime
   let regime;
   if (answers.oilShock) regime = 'Oil Shock';
   else if (answers.inflation) regime = 'Inflation Spike';
