@@ -448,11 +448,12 @@ function IntelTab(){
   };
   useEffect(()=>{fetchIntel();},[]);
 
+  const [expandedSector,setExpandedSector]=useState(null);
+
   if(loading||!intel)return<div className="fade-in"><div className="page-header"><div className="page-title">Intel</div></div><div className="card" style={{textAlign:'center',padding:40}}><Spinner/><div style={{marginTop:8,fontSize:13,color:'var(--text3)'}}>Scanning markets…</div></div></div>;
 
   const prioColors={high:'var(--red)',medium:'var(--orange)',low:'var(--green)'};
   const sectorBarMax=Math.max(...intel.sectors.map(s=>Math.abs(s.monthPct)),1);
-  const [expandedSector,setExpandedSector]=useState(null);
 
   const glossary={
     XLK:{full:'Technology Select Sector',desc:'Apple, Microsoft, NVIDIA — big tech companies. Leads in risk-on markets.',type:'Offensive'},
