@@ -1,17 +1,15 @@
-# VolatilityHarvest v3 — Auto-Regime Detection
+# VolatilityHarvest v4 — Market Intelligence
 
-## What's New
-- **Auto-Regime Detection**: All 5 regime indicators (SPY vs 200MA, VIX, Treasury yields, Oil, DXY) are automatically fetched from live market data every 15 minutes
-- **Live Indicator Dashboard**: Regime tab shows real-time values for each indicator with pass/fail status
-- **Auto-Save**: Regime and deployment plan update automatically — no manual toggling needed
-- **Oil Shock Auto-Detection**: Automatically detects oil shocks (±20% in 30 days)
-- **Manual Overrides**: Inflation Spike and Recession Scare still have manual toggles (require economic data beyond price feeds)
+## What's New in v4
+- **Intel Tab** — New Market Intelligence tab with live, actionable insights
+- **Daily Action Brief** — Plain English summary of what's happening and what to do
+- **Sector Momentum** — 12 sectors ranked by 30-day performance with rotation signals
+- **Smart Money Signals** — Breakouts, unusual volume, death crosses, dip opportunities
+- **Buy/Hold/Avoid Guidance** — Clear recommendations based on market rotation
 
 ## All Previous Features
+- Auto-Regime Detection (5 live indicators)
 - Monthly Action Plan with checkboxes
 - Auto-calculated portfolio value
 - Sparklines, 52-week ranges
-- Dark/Light theme
-- CSV export
-- Monthly history tracking
-- Signal notifications
+- Dark/Light theme, CSV export
