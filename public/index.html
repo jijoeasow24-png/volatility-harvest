@@ -262,6 +262,104 @@ function PositionModal({position,onClose}){
   </div></div>;
 }
 
+// ─── RECORD TRADE MODAL ─────────────────────────────────────────────────────
+function RecordTradeModal({onClose}){
+  const app=useApp();
+  const [type,setType]=useState('BUY');
+  const [selTicker,setSelTicker]=useState('');
+  const [customTicker,setCustomTicker]=useState('');
+  const [posName,setPosName]=useState('');
+  const [posRole,setPosRole]=useState('Core');
+  const [posTheme,setPosTheme]=useState('Technology');
+  const [shares,setShares]=useState('');
+  const [price,setPrice]=useState('');
+
+  const isNew=selTicker==='__new__';
+  const effectiveTicker=isNew?customTicker.toUpperCase().trim():selTicker;
+  const existing=app.positions.find(p=>p.ticker.toUpperCase()===effectiveTicker.toUpperCase());
+  const sharesNum=parseFloat(shares)||0;
+  const priceNum=parseFloat(price)||0;
+
+  const buyPreview=(existing&&sharesNum>0&&priceNum>0)?{
+    newShares:Math.round((existing.shares+sharesNum)*10000)/10000,
+    newAvg:Math.round((existing.buyPrice*existing.shares+priceNum*sharesNum)/(existing.shares+sharesNum)*100)/100
+  }:null;
+
+  const usePrice=priceNum>0?priceNum:(existing?.currentPrice||0);
+  const sellPreview=(existing&&sharesNum>0&&sharesNum<=existing.shares)?{
+    proceeds:Math.round(sharesNum*usePrice*100)/100,
+    pnl:Math.round(sharesNum*(usePrice-existing.buyPrice)*100)/100,
+    pct:(usePrice-existing.buyPrice)/existing.buyPrice*100,
+    remaining:Math.round((existing.shares-sharesNum)*10000)/10000
+  }:null;
+
+  const overSell=type==='SELL'&&existing&&sharesNum>existing.shares;
+
+  const isValid=(()=>{
+    if(!effectiveTicker||sharesNum<=0) return false;
+    if(type==='BUY'){
+      if(priceNum<=0) return false;
+      if(isNew&&(!customTicker.trim()||!posName.trim())) return false;
+    }
+    if(type==='SELL'){if(!existing||overSell) return false;}
+    return true;
+  })();
+
+  const execute=()=>{
+    if(type==='BUY'){
+      if(existing){
+        const ns=Math.round((existing.shares+sharesNum)*10000)/10000;
+        const na=Math.round((existing.buyPrice*existing.shares+priceNum*sharesNum)/ns*100)/100;
+        app.updatePosition(existing.id,{shares:ns,buyPrice:na});
+      } else {
+        app.addPosition({ticker:effectiveTicker,name:posName||effectiveTicker,role:posRole,theme:posTheme,buyPrice:priceNum,currentPrice:priceNum,shares:sharesNum});
+      }
+    } else {
+      const rem=Math.round((existing.shares-sharesNum)*10000)/10000;
+      if(rem<0.0001) app.deletePosition(existing.id);
+      else app.updatePosition(existing.id,{shares:rem});
+    }
+    onClose();
+  };
+
+  return<div className="modal-overlay" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()}>
+    <div className="modal-title">📊 Record Trade<button onClick={onClose} style={{background:'none',border:'none',color:'var(--text3)'}}><Icon name="x" size={20}/></button></div>
+    <div style={{display:'flex',gap:4,marginBottom:16,background:'var(--bg3)',borderRadius:10,padding:4}}>
+      {['BUY','SELL'].map(t=><button key={t} onClick={()=>{setType(t);setShares('');setPrice('');setSelTicker('');}} style={{flex:1,padding:9,borderRadius:8,border:'none',fontWeight:800,fontSize:14,cursor:'pointer',transition:'all .15s',background:type===t?(t==='BUY'?'var(--green)':'var(--red)'):'transparent',color:type===t?'#fff':'var(--text3)'}}>{t==='BUY'?'📈 BUY':'📉 SELL'}</button>)}
+    </div>
+    <div className="form-row"><label className="form-label">Position</label>
+      <select value={selTicker} onChange={e=>{setSelTicker(e.target.value);setCustomTicker('');setPosName('');}}>
+        <option value="">Select…</option>
+        {app.positions.map(p=><option key={p.id} value={p.ticker}>{p.ticker} — {p.shares} shares @ ${p.buyPrice.toFixed(2)}</option>)}
+        {type==='BUY'&&<option value="__new__">＋ New position</option>}
+      </select>
+    </div>
+    {isNew&&<>
+      <div className="form-row"><label className="form-label">Ticker Symbol</label><input value={customTicker} onChange={e=>setCustomTicker(e.target.value.toUpperCase())} placeholder="e.g. AAPL" style={{textTransform:'uppercase'}}/></div>
+      <div className="form-row"><label className="form-label">Company Name</label><input value={posName} onChange={e=>setPosName(e.target.value)} placeholder="e.g. Apple Inc."/></div>
+      <div className="form-row"><label className="form-label">Role</label><select value={posRole} onChange={e=>setPosRole(e.target.value)}>{['Core','Satellite','Hedge'].map(r=><option key={r}>{r}</option>)}</select></div>
+      <div className="form-row"><label className="form-label">Theme</label><select value={posTheme} onChange={e=>setPosTheme(e.target.value)}>{['Technology','Broad Market','Healthcare','Commodities','Diversifiers','Hedges'].map(t=><option key={t}>{t}</option>)}</select></div>
+    </>}
+    <div className="form-row"><label className="form-label">Shares{type==='SELL'&&existing?` (you own ${existing.shares})`:''}</label><input type="number" step="0.0001" min="0.0001" value={shares} onChange={e=>setShares(e.target.value)} placeholder="0.0000"/></div>
+    <div className="form-row"><label className="form-label">{type==='BUY'?'Price Paid ($)':'Sale Price ($)'}{type==='SELL'?' (optional — uses current price)':''}</label><input type="number" step="0.01" value={price} onChange={e=>setPrice(e.target.value)} placeholder={type==='SELL'&&existing?existing.currentPrice.toFixed(2):'0.00'}/></div>
+    {buyPreview&&<div style={{background:'var(--green-bg)',borderRadius:8,padding:12,marginBottom:8,border:'1px solid #22c55e44'}}>
+      <div style={{fontSize:11,fontWeight:700,color:'var(--green)',marginBottom:6}}>✅ After this buy</div>
+      <div style={{display:'flex',justifyContent:'space-between',fontSize:13,marginBottom:4}}><span style={{color:'var(--text3)'}}>Total shares</span><span style={{fontWeight:700}}>{buyPreview.newShares}</span></div>
+      <div style={{display:'flex',justifyContent:'space-between',fontSize:13}}><span style={{color:'var(--text3)'}}>New avg cost</span><span style={{fontWeight:700}}>${buyPreview.newAvg} <span style={{fontSize:11,color:'var(--text3)'}}>(was ${existing.buyPrice.toFixed(2)})</span></span></div>
+    </div>}
+    {sellPreview&&<div style={{background:sellPreview.pnl>=0?'var(--green-bg)':'var(--red-bg)',borderRadius:8,padding:12,marginBottom:8,border:`1px solid ${sellPreview.pnl>=0?'#22c55e':'#ef4444'}44`}}>
+      <div style={{fontSize:11,fontWeight:700,color:sellPreview.pnl>=0?'var(--green)':'var(--red)',marginBottom:6}}>{sellPreview.pnl>=0?'🎉 Profitable sale':'📉 Loss realised'}</div>
+      <div style={{display:'flex',justifyContent:'space-between',fontSize:13,marginBottom:4}}><span style={{color:'var(--text3)'}}>P&L on sale</span><span style={{fontWeight:700,color:sellPreview.pnl>=0?'var(--green)':'var(--red)'}}>{sellPreview.pnl>=0?'+':''}{fmt$(sellPreview.pnl)} ({sellPreview.pct>=0?'+':''}{sellPreview.pct.toFixed(1)}%)</span></div>
+      <div style={{display:'flex',justifyContent:'space-between',fontSize:13}}><span style={{color:'var(--text3)'}}>Remaining</span><span style={{fontWeight:700,color:sellPreview.remaining<0.001?'var(--red)':'var(--text)'}}>{sellPreview.remaining<0.001?'Position closed':sellPreview.remaining+' shares'}</span></div>
+    </div>}
+    {overSell&&<div style={{background:'var(--red-bg)',borderRadius:8,padding:10,marginBottom:8,fontSize:12,color:'var(--red)',fontWeight:600}}>⚠️ You only own {existing.shares} shares of {existing.ticker}</div>}
+    <div className="form-actions">
+      <button className="btn btn-secondary" style={{flex:1}} onClick={onClose}>Cancel</button>
+      <button className="btn btn-primary" style={{flex:2,background:type==='BUY'?'var(--green)':'var(--red)',opacity:isValid?1:.5}} onClick={execute} disabled={!isValid}>{type==='BUY'?'✅ Record Buy':'📉 Record Sell'}</button>
+    </div>
+  </div></div>;
+}
+
 // ─── DASHBOARD TAB ──────────────────────────────────────────────────────────
 function DashboardTab(){
   const app=useApp();
@@ -392,15 +490,15 @@ function PositionDetail({pos,onBack}){
 
 // ─── PORTFOLIO TAB ──────────────────────────────────────────────────────────
 function PortfolioTab(){
-  const app=useApp();const [theme,setTheme]=useState('All');const [showAdd,setShowAdd]=useState(false);
+  const app=useApp();const [theme,setTheme]=useState('All');const [showAdd,setShowAdd]=useState(false);const [showTrade,setShowTrade]=useState(false);
   const filtered=theme==='All'?app.positions:app.positions.filter(p=>p.theme===theme);
   const themeAllocs=useMemo(()=>{const total=Math.max(1,app.positionsValue);const g={};app.positions.forEach(p=>{if(!g[p.theme])g[p.theme]=0;g[p.theme]+=p.currentPrice*p.shares;});return Object.entries(g).map(([t,v])=>({theme:t,value:v,pct:v/total*100})).sort((a,b)=>b.value-a.value);},[app.positions,app.positionsValue]);
-  return<div className="fade-in"><div className="page-header"><div className="page-title">Portfolio</div><div className="header-actions"><button className="refresh-btn" onClick={()=>exportCSV(app.positions)}><Icon name="download" size={14}/> CSV</button><button className="refresh-btn" onClick={()=>setShowAdd(true)}><Icon name="plus" size={14}/></button></div></div>
+  return<div className="fade-in"><div className="page-header"><div className="page-title">Portfolio</div><div className="header-actions"><button className="refresh-btn" onClick={()=>exportCSV(app.positions)}><Icon name="download" size={14}/> CSV</button><button className="refresh-btn" style={{background:'var(--green)',color:'#fff',border:'none',fontWeight:700,padding:'6px 12px'}} onClick={()=>setShowTrade(true)}>📊 Trade</button><button className="refresh-btn" onClick={()=>setShowAdd(true)}><Icon name="plus" size={14}/></button></div></div>
   <div className="stats-grid"><div className="stat-card"><div className="stat-label">Invested</div><div className="stat-value mono" style={{fontSize:16}}>{fmt$(app.positionsCost)}</div></div><div className="stat-card"><div className="stat-label">Market Val</div><div className="stat-value mono" style={{fontSize:16}}>{fmt$(app.positionsValue)}</div></div><div className="stat-card"><div className="stat-label">P&L</div><div className="stat-value mono" style={{fontSize:16,color:pnlColor(app.totalPnL)}}>{pnlSign(app.totalPnL)}{fmt$(app.totalPnL)}</div></div><div className="stat-card"><div className="stat-label">Return</div><div className="stat-value mono" style={{fontSize:16,color:pnlColor(app.totalPnLPct)}}>{pnlSign(app.totalPnLPct)}{fmtPct(app.totalPnLPct)}</div></div></div>
   {themeAllocs.length>0&&<div className="card"><div className="card-title" style={{marginBottom:10}}>Theme Allocation</div><div className="divider"/>{themeAllocs.map(a=><div key={a.theme} style={{marginBottom:8}}><div style={{display:'flex',justifyContent:'space-between',fontSize:13,marginBottom:3}}><span>{a.theme}</span><span style={{fontWeight:700,color:a.pct>30?'var(--red)':'var(--text)'}}>{fmtPct(a.pct)}</span></div><div className="progress-bar" style={{height:5}}><div className="progress-fill" style={{width:Math.min(100,a.pct)+'%',background:a.pct>30?'var(--red)':'var(--blue)'}}/></div></div>)}</div>}
   <div className="chip-row" style={{marginBottom:12}}>{THEMES.map(t=><button key={t} className={`chip ${theme===t?'active':''}`} onClick={()=>setTheme(t)}>{t}</button>)}</div>
   {filtered.map(pos=>{const sig=getSignal(pos);const pct=getPnlPct(pos);return<div key={pos.id} className="card" style={{padding:12}}><div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}><div style={{flex:1}}><div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontWeight:800}}>{pos.ticker}</span><RoleBadge role={pos.role}/></div><div style={{fontSize:10,color:'var(--text3)'}}>{pos.shares} shares @ ${pos.buyPrice.toFixed(2)}</div></div><Sparkline data={app.sparklines[pos.ticker.toUpperCase()]} width={50} height={18}/><div style={{textAlign:'right',marginLeft:8}}><div className="mono" style={{fontWeight:700}}>{fmt$(pos.currentPrice*pos.shares)}</div><div className="mono" style={{fontSize:12,color:pnlColor(pct)}}>{pnlSign(pct)}{fmtPct(pct)}</div><SignalBadge signal={sig} compact/></div></div><button className="btn btn-secondary btn-full" style={{marginTop:8,padding:6,fontSize:11}} onClick={()=>{if(confirm(`Delete ${pos.ticker}?`))app.deletePosition(pos.id);}}><Icon name="trash" size={12} color="var(--red)"/> Delete</button></div>;})}
-  {showAdd&&<PositionModal onClose={()=>setShowAdd(false)} position={null}/>}</div>;
+  {showAdd&&<PositionModal onClose={()=>setShowAdd(false)} position={null}/>}{showTrade&&<RecordTradeModal onClose={()=>setShowTrade(false)}/>}</div>;
 }
 
 // ─── MARKETS TAB ────────────────────────────────────────────────────────────
