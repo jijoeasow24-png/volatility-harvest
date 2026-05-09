@@ -364,6 +364,96 @@ function RecordTradeModal({onClose}){
   </div></div>;
 }
 
+// ─── WEEKLY SUMMARY ─────────────────────────────────────────────────────────
+function WeeklySummary(){
+  const app=useApp();
+  const [open,setOpen]=useState(true);
+  const [missed,setMissed]=useState([]);
+  const [mLoad,setMLoad]=useState(false);
+  const [mChecked,setMChecked]=useState(false);
+
+  const weeklyData=useMemo(()=>app.positions.map(p=>{
+    const spark=app.sparklines[p.ticker.toUpperCase()];
+    if(!spark||spark.length<2)return null;
+    const weekAgo=spark[0];const now=p.currentPrice||spark[spark.length-1];
+    const weekPct=((now-weekAgo)/weekAgo)*100;
+    const weekDollar=(now-weekAgo)*p.shares;
+    return{pos:p,weekPct,weekDollar};
+  }).filter(Boolean).sort((a,b)=>b.weekPct-a.weekPct),[app.positions,app.sparklines]);
+
+  const totalWeekDollar=weeklyData.reduce((s,x)=>s+x.weekDollar,0);
+  const best=weeklyData[0];const worst=weeklyData[weeklyData.length-1];
+
+  const loadMissed=async()=>{
+    if(mChecked){return;}setMLoad(true);setMChecked(true);
+    const portfolio=new Set(app.positions.map(p=>p.ticker.toUpperCase()));
+    const candidates=['AAPL','TSLA','META','AMD','SMCI','BABA','COIN','MSTR','XLE','XLV','GLD','SPY','SHOP','NFLX','UBER','ARM'].filter(t=>!portfolio.has(t)).slice(0,14);
+    try{
+      const [qRes,sRes]=await Promise.all([fetch(`/api/quotes?tickers=${candidates.join(',')}`),fetch(`/api/sparkline?tickers=${candidates.join(',')}`)]);
+      const qd=await qRes.json();const sd=await sRes.json();
+      const items=candidates.map(t=>{const q=qd[t];const sp=sd[t];if(!q||!sp||sp.length<2)return null;const wPct=((q.price-sp[0])/sp[0])*100;return{ticker:t,price:q.price,weekPct:wPct};}).filter(Boolean).sort((a,b)=>b.weekPct-a.weekPct).slice(0,6);
+      setMissed(items);
+    }catch(e){setMissed([]);}setMLoad(false);
+  };
+
+  if(weeklyData.length===0)return null;
+
+  return<div className="card">
+    <div className="card-header" style={{cursor:'pointer'}} onClick={()=>setOpen(o=>!o)}>
+      <span className="card-title">📅 Last 7 Days</span>
+      <div style={{display:'flex',alignItems:'center',gap:8}}>
+        <span className="mono" style={{fontSize:13,fontWeight:700,color:pnlColor(totalWeekDollar)}}>{totalWeekDollar>=0?'+':''}{fmt$(Math.abs(totalWeekDollar))}</span>
+        <span style={{fontSize:12,color:'var(--text3)'}}>{open?'▲':'▼'}</span>
+      </div>
+    </div>
+    {open&&<>
+      <div className="divider"/>
+      {weeklyData.map(({pos,weekPct,weekDollar})=><div key={pos.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'6px 0',borderBottom:'1px solid var(--border)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <span style={{fontWeight:700,minWidth:48}}>{pos.ticker}</span>
+          <span style={{fontSize:11,color:'var(--text3)'}}>{pos.shares} sh</span>
+        </div>
+        <div style={{display:'flex',gap:10,alignItems:'center'}}>
+          <span className="mono" style={{fontSize:12,color:pnlColor(weekDollar),minWidth:64,textAlign:'right'}}>{weekDollar>=0?'+':''}{fmt$(Math.abs(weekDollar))}</span>
+          <span className="badge" style={{background:weekPct>=0?'var(--green-bg)':'var(--red-bg)',color:weekPct>=0?'var(--green)':'var(--red)',minWidth:56,textAlign:'center'}}>{weekPct>=0?'+':''}{weekPct.toFixed(2)}%</span>
+        </div>
+      </div>)}
+      <div style={{display:'flex',gap:8,marginTop:10}}>
+        {best&&<div style={{flex:1,background:'var(--green-bg)',borderRadius:8,padding:'6px 10px'}}>
+          <div style={{fontSize:10,color:'var(--text3)',fontWeight:700,marginBottom:2}}>🏆 BEST</div>
+          <div style={{fontWeight:800,fontSize:14}}>{best.pos.ticker}</div>
+          <div className="mono" style={{fontSize:12,color:'var(--green)',fontWeight:700}}>+{best.weekPct.toFixed(2)}%</div>
+          <div className="mono" style={{fontSize:11,color:'var(--text3)'}}>+{fmt$(Math.abs(best.weekDollar))}</div>
+        </div>}
+        {worst&&worst.pos.id!==best?.pos.id&&<div style={{flex:1,background:'var(--red-bg)',borderRadius:8,padding:'6px 10px'}}>
+          <div style={{fontSize:10,color:'var(--text3)',fontWeight:700,marginBottom:2}}>📉 WORST</div>
+          <div style={{fontWeight:800,fontSize:14}}>{worst.pos.ticker}</div>
+          <div className="mono" style={{fontSize:12,color:'var(--red)',fontWeight:700}}>{worst.weekPct.toFixed(2)}%</div>
+          <div className="mono" style={{fontSize:11,color:'var(--text3)'}}>{fmt$(Math.abs(worst.weekDollar))}</div>
+        </div>}
+      </div>
+      <div className="divider" style={{marginTop:10}}/>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+        <span style={{fontSize:11,fontWeight:700,color:'var(--text3)',textTransform:'uppercase'}}>🔍 Missed Opportunities</span>
+        {!mChecked&&<button className="chip" onClick={loadMissed} disabled={mLoad} style={{fontSize:11}}>{mLoad?<><Spinner/> Checking…</>:'Check now'}</button>}
+      </div>
+      {mLoad&&<div style={{textAlign:'center',padding:12}}><Spinner/></div>}
+      {!mLoad&&mChecked&&missed.length===0&&<div style={{fontSize:12,color:'var(--text3)',textAlign:'center',padding:8}}>No major moves outside your portfolio this week.</div>}
+      {missed.map(m=><div key={m.ticker} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'5px 0',borderBottom:'1px solid var(--border)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <span style={{fontWeight:700,minWidth:48}}>{m.ticker}</span>
+          <span style={{fontSize:10,color:'var(--text3)'}}>not in portfolio</span>
+        </div>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          <span className="mono" style={{fontSize:11,color:'var(--text3)'}}>${m.price.toFixed(2)}</span>
+          <span className="badge" style={{background:m.weekPct>=0?'var(--green-bg)':'var(--red-bg)',color:m.weekPct>=0?'var(--green)':'var(--red)',minWidth:56,textAlign:'center'}}>{m.weekPct>=0?'+':''}{m.weekPct.toFixed(2)}%</span>
+        </div>
+      </div>)}
+      {!mLoad&&mChecked&&missed.length>0&&<div style={{fontSize:10,color:'var(--text3)',marginTop:6,textAlign:'center'}}>These moved while not in your portfolio — for context only, not buy signals.</div>}
+    </>}
+  </div>;
+}
+
 // ─── DASHBOARD TAB ──────────────────────────────────────────────────────────
 function DashboardTab(){
   const app=useApp();
@@ -379,6 +469,8 @@ function DashboardTab(){
       <div className="stat-card"><div className="stat-label">Peak</div><div className="stat-value mono">{fmt$(app.portfolioPeak)}</div></div>
       <div className="stat-card"><div className="stat-label">Positions</div><div className="stat-value mono">{app.positions.length}</div><div className="stat-sub">{app.actionableSignals.length} need action</div></div>
     </div>
+
+    <WeeklySummary/>
 
     <div className="card"><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><span style={{fontSize:12,fontWeight:700,color:'var(--text3)',textTransform:'uppercase'}}>Drawdown</span><span className="mono" style={{fontSize:18,fontWeight:800,color:app.circuitLevel.color}}>{fmtPct(app.drawdown)}</span></div><div className="progress-bar"><div className="progress-fill" style={{width:Math.min(100,Math.abs(app.drawdown)/Math.max(15,Math.ceil(Math.abs(app.drawdown)/5)*5)*100)+'%',background:'linear-gradient(90deg,var(--green),#eab308,var(--orange),var(--red))'}}/></div><div style={{display:'flex',justifyContent:'space-between',marginTop:4,fontSize:10,color:'var(--text3)'}}>{(()=>{const s=Math.max(15,Math.ceil(Math.abs(app.drawdown)/5)*5);return[0,Math.round(s/3),Math.round(2*s/3),s].map((v,i)=><span key={i}>{v===0?'0%':'-'+v+'%'}</span>);})()}</div></div>
 
