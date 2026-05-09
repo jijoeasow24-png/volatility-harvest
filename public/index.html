@@ -978,9 +978,67 @@ function OnboardingFlow({onDone}){
   );
 }
 
+// ─── FEEDBACK ───────────────────────────────────────────────────────────────
+function FeedbackModal({onClose}){
+  const [name,setName]=useState('');
+  const [message,setMessage]=useState('');
+  const [rating,setRating]=useState(0);
+  const [hover,setHover]=useState(0);
+  const [status,setStatus]=useState('idle'); // idle | sending | done | error
+  const [errMsg,setErrMsg]=useState('');
+
+  const send=async()=>{
+    if(!name.trim()||!message.trim())return;
+    setStatus('sending');
+    try{
+      const r=await fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name.trim(),message:message.trim(),rating:rating||null})});
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.error||'Unknown error');
+      setStatus('done');
+    }catch(e){setErrMsg(e.message);setStatus('error');}
+  };
+
+  return<div style={{position:'fixed',inset:0,zIndex:500,background:'rgba(0,0,0,.6)',display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+    <div style={{background:'var(--bg1)',borderRadius:'20px 20px 0 0',padding:24,width:'100%',maxWidth:480,maxHeight:'90vh',overflowY:'auto'}}>
+      {status==='done'?<div style={{textAlign:'center',padding:'32px 0'}}>
+        <div style={{fontSize:48,marginBottom:12}}>🎉</div>
+        <div style={{fontSize:18,fontWeight:800,marginBottom:6}}>Thanks for the feedback!</div>
+        <div style={{fontSize:13,color:'var(--text3)',marginBottom:24}}>It's been sent and appreciated.</div>
+        <button className="btn btn-primary btn-full" onClick={onClose}>Close</button>
+      </div>:<>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+          <div><div style={{fontSize:17,fontWeight:800}}>💬 Send Feedback</div><div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>Your thoughts go directly to the developer</div></div>
+          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text3)',fontSize:20,cursor:'pointer'}}>✕</button>
+        </div>
+        {/* Star rating */}
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:11,fontWeight:700,color:'var(--text3)',marginBottom:8,textTransform:'uppercase'}}>Rate the app</div>
+          <div style={{display:'flex',gap:8}}>
+            {[1,2,3,4,5].map(s=><button key={s} onClick={()=>setRating(s)} onMouseEnter={()=>setHover(s)} onMouseLeave={()=>setHover(0)} style={{background:'none',border:'none',fontSize:28,cursor:'pointer',transition:'transform .15s',transform:(hover||rating)>=s?'scale(1.2)':'scale(1)',filter:(hover||rating)>=s?'none':'grayscale(1) opacity(.4)'}}>⭐</button>)}
+          </div>
+        </div>
+        {/* Name */}
+        <div style={{marginBottom:12}}>
+          <div style={{fontSize:11,fontWeight:700,color:'var(--text3)',marginBottom:6,textTransform:'uppercase'}}>Your name</div>
+          <input value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Ahmed" style={{width:'100%',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'10px 12px',color:'var(--text1)',fontSize:14,boxSizing:'border-box'}}/>
+        </div>
+        {/* Message */}
+        <div style={{marginBottom:20}}>
+          <div style={{fontSize:11,fontWeight:700,color:'var(--text3)',marginBottom:6,textTransform:'uppercase'}}>Message</div>
+          <textarea value={message} onChange={e=>setMessage(e.target.value)} placeholder="What do you love? What's missing? Any bugs?" rows={4} style={{width:'100%',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'10px 12px',color:'var(--text1)',fontSize:14,resize:'vertical',boxSizing:'border-box',fontFamily:'inherit'}}/>
+        </div>
+        {status==='error'&&<div style={{background:'var(--red-bg)',border:'1px solid #b91c1c44',borderRadius:8,padding:'10px 12px',marginBottom:12,fontSize:12,color:'var(--red)'}}>{errMsg}</div>}
+        <button className="btn btn-primary btn-full" onClick={send} disabled={!name.trim()||!message.trim()||status==='sending'} style={{padding:14,fontSize:15}}>
+          {status==='sending'?<><Spinner/> Sending…</>:'Send Feedback →'}
+        </button>
+      </>}
+    </div>
+  </div>;
+}
+
 function App(){const [tab,setTab]=useState('dashboard');const [onboarded,setOnboarded]=useState(()=>!!localStorage.getItem('vh_onboarded'));const tabs=[{id:'dashboard',label:'Dashboard',icon:'dashboard'},{id:'intel',label:'Intel',icon:'zap'},{id:'regime',label:'Regime',icon:'regime'},{id:'signals',label:'Signals',icon:'signals'},{id:'portfolio',label:'Portfolio',icon:'portfolio'},{id:'watchlist',label:'Watchlist',icon:'watchlist'},{id:'markets',label:'Markets',icon:'markets'}];
 return<AppProvider><AppContent tab={tab} setTab={setTab} tabs={tabs} onboarded={onboarded} setOnboarded={setOnboarded}/></AppProvider>;}
-function AppContent({tab,setTab,tabs,onboarded,setOnboarded}){const app=useApp();if(!onboarded)return<OnboardingFlow onDone={()=>setOnboarded(true)}/>;return<div className="app">{app.notification&&<div style={{position:'fixed',top:0,left:0,right:0,zIndex:200,padding:12,background:'linear-gradient(135deg,#b91c1c,#dc2626)',color:'#fff',fontSize:13,fontWeight:600,display:'flex',justifyContent:'space-between'}}><span>{app.notification.text}</span><button onClick={()=>app.setNotification(null)} style={{background:'none',border:'none',color:'#fff',fontWeight:700}}>✕</button></div>}<div className="main">{tab==='dashboard'&&<DashboardTab/>}{tab==='intel'&&<IntelTab/>}{tab==='regime'&&<RegimeTab/>}{tab==='signals'&&<SignalsTab/>}{tab==='portfolio'&&<PortfolioTab/>}{tab==='watchlist'&&<WatchlistTab/>}{tab==='markets'&&<MarketsTab/>}</div><div className="tab-bar">{tabs.map(t=><button key={t.id} className={`tab-btn ${tab===t.id?'active':''}`} onClick={()=>setTab(t.id)}><Icon name={t.icon} size={20} color={tab===t.id?'var(--blue)':'var(--text3)'}/><span>{t.label}</span></button>)}</div></div>;}
+function AppContent({tab,setTab,tabs,onboarded,setOnboarded}){const app=useApp();const [showFeedback,setShowFeedback]=useState(false);if(!onboarded)return<OnboardingFlow onDone={()=>setOnboarded(true)}/>;return<div className="app">{app.notification&&<div style={{position:'fixed',top:0,left:0,right:0,zIndex:200,padding:12,background:'linear-gradient(135deg,#b91c1c,#dc2626)',color:'#fff',fontSize:13,fontWeight:600,display:'flex',justifyContent:'space-between'}}><span>{app.notification.text}</span><button onClick={()=>app.setNotification(null)} style={{background:'none',border:'none',color:'#fff',fontWeight:700}}>✕</button></div>}<div className="main">{tab==='dashboard'&&<DashboardTab/>}{tab==='intel'&&<IntelTab/>}{tab==='regime'&&<RegimeTab/>}{tab==='signals'&&<SignalsTab/>}{tab==='portfolio'&&<PortfolioTab/>}{tab==='watchlist'&&<WatchlistTab/>}{tab==='markets'&&<MarketsTab/>}</div><div className="tab-bar">{tabs.map(t=><button key={t.id} className={`tab-btn ${tab===t.id?'active':''}`} onClick={()=>setTab(t.id)}><Icon name={t.icon} size={20} color={tab===t.id?'var(--blue)':'var(--text3)'}/><span>{t.label}</span></button>)}</div><button onClick={()=>setShowFeedback(true)} style={{position:'fixed',bottom:74,right:16,zIndex:100,background:'var(--blue)',color:'#fff',border:'none',borderRadius:24,padding:'8px 14px',fontSize:12,fontWeight:700,boxShadow:'0 4px 16px rgba(59,130,246,.4)',cursor:'pointer',display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:14}}>💬</span> Feedback</button>{showFeedback&&<FeedbackModal onClose={()=>setShowFeedback(false)}/>}</div>;}
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
