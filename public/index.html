@@ -152,7 +152,7 @@ function AppProvider({children}){
   const [lastRegimeCheck,setLastRegimeCheck]=useState(null);
   const [autoRegimeData,setAutoRegimeData]=useState(null); // NEW: live indicator data
   const [autoRegimeLoading,setAutoRegimeLoading]=useState(false);
-  const [quotes,setQuotes]=useState({});const [sparklines,setSparklines]=useState({});
+  const [quotes,setQuotes]=useState({});const [sparklines,setSparklines]=useState({});const [technicals,setTechnicals]=useState({});
   const [isRefreshing,setIsRefreshing]=useState(false);const [lastRefresh,setLastRefresh]=useState(null);const [refreshError,setRefreshError]=useState(null);
   const [monthlyHistory,setMonthlyHistory]=useState([]);const [actionChecks,setActionChecks]=useState({});
   const [notification,setNotification]=useState(null);
@@ -204,7 +204,7 @@ function AppProvider({children}){
   const refreshPrices=useCallback(async()=>{
     if(positions.length===0||isRefreshing)return;
     setIsRefreshing(true);setRefreshError(null);
-    try{const tickers=positions.map(p=>p.ticker).join(',');const [qR,sR]=await Promise.all([fetch(`/api/quotes?tickers=${tickers}`),fetch(`/api/sparkline?tickers=${tickers}`)]);const qD=await qR.json();const sD=await sR.json();if(Object.keys(qD).length===0)throw new Error('No data');setQuotes(qD);setSparklines(sD);setPositions(prev=>prev.map(p=>{const q=qD[p.ticker.toUpperCase()];return q?{...p,currentPrice:q.price}:p;}));setLastRefresh(new Date());
+    try{const tickers=positions.map(p=>p.ticker).join(',');const [qR,sR,tR]=await Promise.all([fetch(`/api/quotes?tickers=${tickers}`),fetch(`/api/sparkline?tickers=${tickers}`),fetch(`/api/technical?tickers=${tickers}`)]);const qD=await qR.json();const sD=await sR.json();const tD=await tR.json().catch(()=>({}));if(Object.keys(qD).length===0)throw new Error('No data');setQuotes(qD);setSparklines(sD);setTechnicals(tD);setPositions(prev=>prev.map(p=>{const q=qD[p.ticker.toUpperCase()];return q?{...p,currentPrice:q.price}:p;}));setLastRefresh(new Date());
     const exits=positions.filter(p=>{const q=qD[p.ticker.toUpperCase()];if(!q)return false;const pct=(q.price-p.buyPrice)/p.buyPrice;return pct<=ROLES[p.role]?.stopLoss;});
     if(exits.length>0)setNotification({type:'danger',text:`⚠️ STOP-LOSS on ${exits.map(p=>p.ticker).join(', ')}!`});
     }catch(e){setRefreshError('Price update failed');}setIsRefreshing(false);
@@ -221,7 +221,7 @@ function AppProvider({children}){
   const toggleActionCheck=(key)=>setActionChecks(prev=>({...prev,[key]:!prev[key]}));
   const updateBudget=(v)=>{setMonthlyBudget(v);localStorage.setItem('vh_monthly_budget',v.toString());};
 
-  return<AppContext.Provider value={{theme,toggleTheme,positions,setPositions,portfolioPeak,setPeak,portfolioTotal,regime,setRegime,regimeAnswers,setRegimeAnswers,lastRegimeCheck,setLastRegimeCheck,autoRegimeData,autoRegimeLoading,fetchAutoRegime,quotes,sparklines,isRefreshing,lastRefresh,refreshError,refreshPrices,positionsValue,positionsCost,totalPnL,totalPnLPct,drawdown,circuitLevel,actionableSignals,addPosition,updatePosition,deletePosition,resetPositions,monthlyHistory,actionChecks,toggleActionCheck,notification,setNotification,monthlyBudget,updateBudget}}>{children}</AppContext.Provider>;
+  return<AppContext.Provider value={{theme,toggleTheme,positions,setPositions,portfolioPeak,setPeak,portfolioTotal,regime,setRegime,regimeAnswers,setRegimeAnswers,lastRegimeCheck,setLastRegimeCheck,autoRegimeData,autoRegimeLoading,fetchAutoRegime,quotes,sparklines,technicals,isRefreshing,lastRefresh,refreshError,refreshPrices,positionsValue,positionsCost,totalPnL,totalPnLPct,drawdown,circuitLevel,actionableSignals,addPosition,updatePosition,deletePosition,resetPositions,monthlyHistory,actionChecks,toggleActionCheck,notification,setNotification,monthlyBudget,updateBudget}}>{children}</AppContext.Provider>;
 }
 const useApp=()=>useContext(AppContext);
 
@@ -362,6 +362,60 @@ function RecordTradeModal({onClose}){
       <button className="btn btn-primary" style={{flex:2,background:type==='BUY'?'var(--green)':'var(--red)',opacity:isValid?1:.5}} onClick={execute} disabled={!isValid}>{type==='BUY'?'✅ Record Buy':'📉 Record Sell'}</button>
     </div>
   </div></div>;
+}
+
+// ─── BUY SCORE ENGINE ───────────────────────────────────────────────────────
+function calcBuyScore(tech,regime,circuitName){
+  if(!tech)return null;
+  let score=0;
+  // RSI component (0-25)
+  const r=tech.rsi;
+  if(r>=50&&r<65)score+=25;
+  else if(r>=35&&r<50)score+=20;
+  else if(r>=65&&r<=70)score+=15;
+  else if(r>=30&&r<35)score+=15;
+  else if(r<30)score+=10;
+  else score+=5; // >70 overbought
+  // MA50 distance component (0-25)
+  const m=tech.pctFromMa50;
+  if(m>=-2&&m<=0)score+=25;       // right at MA, slight pullback
+  else if(m>0&&m<=3)score+=22;    // just above, strong
+  else if(m>=-5&&m<-2)score+=18;  // modest pullback
+  else if(m>3&&m<=8)score+=12;    // extended above
+  else if(m>=-10&&m<-5)score+=10; // larger pullback
+  else if(m>8)score+=4;           // very extended up
+  else score+=4;                  // >10% below MA, danger
+  // Regime component (0-25)
+  const reg={'Risk-On':25,'Inflation Spike':18,'Risk-Off':12,'Oil Shock':12,'Recession Scare':5,'Not Assessed':0};
+  score+=(reg[regime]??0);
+  // Circuit component (0-25)
+  const ckt={'Normal':25,'Yellow Alert':18,'Orange Alert':8,'Red Alert':3,'HARD STOP':0};
+  score+=(ckt[circuitName]??0);
+  return Math.min(100,score);
+}
+function scoreLabel(s){
+  if(s===null)return{label:'N/A',color:'var(--text3)',bg:'var(--bg2)'};
+  if(s>=75)return{label:'Strong Buy',color:'var(--green)',bg:'var(--green-bg)'};
+  if(s>=55)return{label:'Moderate',color:'#eab308',bg:'#eab30815'};
+  if(s>=35)return{label:'Neutral',color:'var(--text3)',bg:'var(--bg2)'};
+  return{label:'Avoid',color:'var(--red)',bg:'var(--red-bg)'};
+}
+function RsiBadge({rsi}){
+  if(rsi==null)return null;
+  let color,bg;
+  if(rsi<30){color='#38bdf8';bg='#38bdf815';}
+  else if(rsi<50){color='var(--text2)';bg='var(--bg2)';}
+  else if(rsi<65){color='var(--green)';bg='var(--green-bg)';}
+  else if(rsi<=70){color:'#eab308';bg='#eab30815';}
+  else{color='var(--red)';bg='var(--red-bg)';}
+  const zone=rsi<30?'Oversold':rsi<50?'Weak':rsi<65?'Bullish':rsi<=70?'Hot':'Overbought';
+  return<span style={{fontSize:10,fontWeight:700,color,background:bg,borderRadius:4,padding:'2px 6px'}}>RSI {rsi} · {zone}</span>;
+}
+function MaBadge({pctFromMa50}){
+  if(pctFromMa50==null)return null;
+  const above=pctFromMa50>=0;
+  const color=above?'var(--green)':'var(--orange)';
+  return<span style={{fontSize:10,fontWeight:700,color,background:above?'var(--green-bg)':'#f9731620',borderRadius:4,padding:'2px 6px'}}>{above?'▲':'▼'} MA50 {above?'+':''}{pctFromMa50}%</span>;
 }
 
 // ─── WEEKLY SUMMARY ─────────────────────────────────────────────────────────
@@ -562,15 +616,28 @@ function SignalsTab(){
   const sorted=useMemo(()=>{const order=['EXIT — STOP LOSS','TRIM STRONG','TRIM','ADD STRONG','ADD','HOLD'];const list=[...app.positions];if(sortBy==='signal')list.sort((a,b)=>order.indexOf(getSignal(a).name)-order.indexOf(getSignal(b).name));else if(sortBy==='pnl')list.sort((a,b)=>Math.abs(getPnlPct(b))-Math.abs(getPnlPct(a)));else list.sort((a,b)=>a.ticker.localeCompare(b.ticker));return list;},[app.positions,sortBy]);
   if(selected)return<PositionDetail pos={selected} onBack={()=>setSelected(null)}/>;
   return<div className="fade-in"><div className="page-header"><div className="page-title">Trade Signals</div><button className="refresh-btn" onClick={()=>setShowAdd(true)}><Icon name="plus" size={14}/> Add</button></div>{app.circuitLevel.name==='HARD STOP'&&<div className="card" style={{background:'var(--red-bg)',borderColor:'#b91c1c44',marginBottom:12}}><div style={{fontSize:12,fontWeight:800,color:'#f87171',marginBottom:4}}>⛔ HARD STOP Active</div><div style={{fontSize:12,color:'var(--red)'}}>Only act on EXIT signals. ADD and TRIM signals are suspended until circuit breaker clears (SPY holds 50-day MA for 2 consecutive weeks).</div></div>}<div style={{display:'flex',gap:6,marginBottom:12}}>{['signal','pnl','name'].map(s=><button key={s} className={`chip ${sortBy===s?'active':''}`} onClick={()=>setSortBy(s)}>{s==='signal'?'Signal':s==='pnl'?'P&L %':'Name'}</button>)}</div>
-  {sorted.map(pos=>{const sig=getSignal(pos);const pct=getPnlPct(pos);return<div key={pos.id} className="card" style={{cursor:'pointer',padding:12}} onClick={()=>setSelected(pos)}><div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}><div style={{flex:1}}><div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:15,fontWeight:800}}>{pos.ticker}</span><RoleBadge role={pos.role}/></div><div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>{pos.name}</div></div><Sparkline data={app.sparklines[pos.ticker.toUpperCase()]} width={60} height={20}/><div style={{textAlign:'right',marginLeft:8,display:'flex',alignItems:'center',gap:8}}><span className="mono" style={{fontSize:14,fontWeight:700,color:pnlColor(pct)}}>{pnlSign(pct)}{fmtPct(pct)}</span><SignalBadge signal={sig} compact/></div></div></div>;})}
+  {sorted.map(pos=>{const sig=getSignal(pos);const pct=getPnlPct(pos);const tech=app.technicals[pos.ticker.toUpperCase()];const score=calcBuyScore(tech,app.regime,app.circuitLevel.name);const sl=scoreLabel(score);return<div key={pos.id} className="card" style={{cursor:'pointer',padding:12}} onClick={()=>setSelected(pos)}>
+    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+      <div style={{flex:1}}><div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:15,fontWeight:800}}>{pos.ticker}</span><RoleBadge role={pos.role}/></div><div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>{pos.name}</div></div>
+      <Sparkline data={app.sparklines[pos.ticker.toUpperCase()]} width={60} height={20}/>
+      <div style={{textAlign:'right',marginLeft:8,display:'flex',alignItems:'center',gap:8}}><span className="mono" style={{fontSize:14,fontWeight:700,color:pnlColor(pct)}}>{pnlSign(pct)}{fmtPct(pct)}</span><SignalBadge signal={sig} compact/></div>
+    </div>
+    {tech&&<div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap',alignItems:'center'}}>
+      <RsiBadge rsi={tech.rsi}/>
+      <MaBadge pctFromMa50={tech.pctFromMa50}/>
+      {score!==null&&<span style={{fontSize:10,fontWeight:800,color:sl.color,background:sl.bg,borderRadius:4,padding:'2px 8px',marginLeft:'auto'}}>Score {score}/100 · {sl.label}</span>}
+    </div>}
+  </div>;})}
   {showAdd&&<PositionModal onClose={()=>setShowAdd(false)} position={null}/>}</div>;
 }
 
 function PositionDetail({pos,onBack}){
-  const app=useApp();const [showEdit,setShowEdit]=useState(false);const sig=getSignal(pos);const pct=getPnlPct(pos);const pnl=pos.currentPrice*pos.shares-pos.buyPrice*pos.shares;const role=ROLES[pos.role];const q=app.quotes[pos.ticker.toUpperCase()];
+  const app=useApp();const [showEdit,setShowEdit]=useState(false);const sig=getSignal(pos);const pct=getPnlPct(pos);const pnl=pos.currentPrice*pos.shares-pos.buyPrice*pos.shares;const role=ROLES[pos.role];const q=app.quotes[pos.ticker.toUpperCase()];const tech=app.technicals[pos.ticker.toUpperCase()];const score=calcBuyScore(tech,app.regime,app.circuitLevel.name);const sl=scoreLabel(score);
   return<div className="fade-in">
     <button onClick={onBack} style={{display:'flex',alignItems:'center',gap:4,background:'none',border:'none',color:'var(--blue)',fontSize:13,fontWeight:600,marginBottom:12,padding:0}}><Icon name="back" size={16} color="var(--blue)"/> Back</button>
-    <div className="card" style={{background:sig.color+'12',borderColor:sig.color+'33'}}><div style={{display:'flex',justifyContent:'space-between'}}><div><div style={{display:'flex',alignItems:'center',gap:8}}><span style={{fontSize:24,fontWeight:800}}>{pos.ticker}</span><RoleBadge role={pos.role}/></div><div style={{fontSize:13,color:'var(--text2)'}}>{pos.name}</div></div><div style={{display:'flex',gap:8}}><SignalBadge signal={sig}/><button className="refresh-btn" onClick={()=>setShowEdit(true)} style={{padding:'4px 8px'}}><Icon name="edit" size={14}/></button></div></div><div style={{marginTop:12}}><Sparkline data={app.sparklines[pos.ticker.toUpperCase()]} width={280} height={40}/></div></div>
+    <div className="card" style={{background:sig.color+'12',borderColor:sig.color+'33'}}><div style={{display:'flex',justifyContent:'space-between'}}><div><div style={{display:'flex',alignItems:'center',gap:8}}><span style={{fontSize:24,fontWeight:800}}>{pos.ticker}</span><RoleBadge role={pos.role}/></div><div style={{fontSize:13,color:'var(--text2)'}}>{pos.name}</div></div><div style={{display:'flex',gap:8}}><SignalBadge signal={sig}/><button className="refresh-btn" onClick={()=>setShowEdit(true)} style={{padding:'4px 8px'}}><Icon name="edit" size={14}/></button></div></div><div style={{marginTop:12}}><Sparkline data={app.sparklines[pos.ticker.toUpperCase()]} width={280} height={40}/></div>
+    {tech&&<div style={{display:'flex',gap:6,marginTop:10,flexWrap:'wrap'}}><RsiBadge rsi={tech.rsi}/><MaBadge pctFromMa50={tech.pctFromMa50}/>{tech.pctFromMa200!=null&&<span style={{fontSize:10,fontWeight:700,color:'var(--text2)',background:'var(--bg2)',borderRadius:4,padding:'2px 6px'}}>{tech.pctFromMa200>=0?'▲':'▼'} MA200 {tech.pctFromMa200>=0?'+':''}{tech.pctFromMa200}%</span>}{tech.volRatio!=null&&<span style={{fontSize:10,fontWeight:700,color:tech.volRatio>=1.5?'var(--green)':'var(--text3)',background:tech.volRatio>=1.5?'var(--green-bg)':'var(--bg2)',borderRadius:4,padding:'2px 6px'}}>Vol {tech.volRatio}×</span>}</div>}
+    </div>
     {q&&q.fiftyTwoWeekLow&&<div className="card"><RangeBar52 low={q.fiftyTwoWeekLow} high={q.fiftyTwoWeekHigh} current={pos.currentPrice}/></div>}
     <div className="stats-grid"><div className="stat-card"><div className="stat-label">Buy</div><div className="stat-value mono" style={{fontSize:16}}>${pos.buyPrice.toFixed(2)}</div></div><div className="stat-card"><div className="stat-label">Current</div><div className="stat-value mono" style={{fontSize:16}}>${pos.currentPrice.toFixed(2)}</div></div><div className="stat-card"><div className="stat-label">Shares</div><div className="stat-value mono" style={{fontSize:16}}>{pos.shares}</div></div><div className="stat-card"><div className="stat-label">P&L</div><div className="stat-value mono" style={{fontSize:16,color:pnlColor(pnl)}}>{pnlSign(pnl)}{fmt$(pnl)}</div><div className="stat-sub">{pnlSign(pct)}{fmtPct(pct)}</div></div></div>
     <div className="card"><div className="card-header"><span style={{fontSize:16,fontWeight:800}}>What to Do</span><SignalBadge signal={sig}/></div><div className="divider"/>
@@ -579,6 +646,12 @@ function PositionDetail({pos,onBack}){
     :sig.name.includes('ADD')?<div><div style={{background:sig.color+'15',padding:10,borderRadius:8,fontSize:14,fontWeight:600}}>Buy ~${Math.round(app.portfolioTotal*role.addSize)} ({(role.addSize*100).toFixed(1)}%)</div></div>
     :<div style={{color:'var(--text3)',fontSize:13}}>✅ No action required.</div>}
     </div>
+    {tech&&score!==null&&<div className="card"><div className="card-header"><span className="card-title">🧠 Buy Score</span><span style={{fontSize:20,fontWeight:900,color:sl.color}}>{score}<span style={{fontSize:12,color:'var(--text3)'}}>/100</span></span></div><div className="divider"/>
+      <div style={{background:sl.bg,borderRadius:8,padding:'8px 12px',marginBottom:10,display:'flex',justifyContent:'space-between',alignItems:'center'}}><span style={{fontWeight:800,color:sl.color,fontSize:14}}>{sl.label}</span>{score>=75&&<span style={{fontSize:12}}>✅ All systems aligned</span>}{score>=55&&score<75&&<span style={{fontSize:12}}>⚡ Good setup, confirm regime</span>}{score<55&&<span style={{fontSize:12}}>⏸️ Wait for better setup</span>}</div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+        {[{label:'RSI',value:tech.rsi,detail:tech.rsi<30?'Oversold':tech.rsi<50?'Weak':tech.rsi<65?'Bullish':tech.rsi<=70?'Hot':'Overbought'},{label:'vs MA50',value:(tech.pctFromMa50>=0?'+':'')+tech.pctFromMa50+'%',detail:tech.pctFromMa50>=-2&&tech.pctFromMa50<=3?'Ideal zone':tech.pctFromMa50<-10?'Extended low':'Normal'},{label:'Regime',value:app.regime,detail:app.regime==='Risk-On'?'Max points':'Reduced'},{label:'Circuit',value:app.circuitLevel.name,detail:app.circuitLevel.name==='Normal'?'Clear':'Caution'}].map((row,i)=><div key={i} style={{background:'var(--bg2)',borderRadius:6,padding:'6px 10px'}}><div style={{fontSize:10,color:'var(--text3)',fontWeight:600}}>{row.label}</div><div style={{fontWeight:800,fontSize:13}}>{row.value}</div><div style={{fontSize:10,color:'var(--text3)'}}>{row.detail}</div></div>)}
+      </div>
+    </div>}
     <div className="card"><div className="card-title" style={{marginBottom:10}}>🎯 Price Triggers</div><div className="divider"/>{[{l:'Add',p:pos.buyPrice*(1+role.addPct),c:'var(--green)'},{l:'Trim 20%',p:pos.buyPrice*(1+role.trimPct),c:'var(--orange)'},{l:'Trim 15%',p:pos.buyPrice*(1+role.trimPct+.10),c:'var(--red)'},{l:'Stop EXIT',p:pos.buyPrice*(1+role.stopLoss),c:'#b91c1c'}].map((t,i)=>{const hit=(t.c==='var(--green)'&&pos.currentPrice<=t.p)||(t.c!=='var(--green)'&&pos.currentPrice>=t.p);return<div key={i} style={{display:'flex',alignItems:'center',padding:'6px 0',gap:8}}><span style={{width:8,height:8,borderRadius:'50%',background:t.c}}/><span style={{fontSize:13,flex:1}}>{t.l}</span><span className="mono" style={{fontSize:13,fontWeight:700,color:t.c}}>${t.p.toFixed(2)}</span>{hit&&<span className="badge" style={{background:t.c,color:'#fff',fontSize:9}}>NOW</span>}</div>;})}</div>
     {showEdit&&<PositionModal position={pos} onClose={()=>setShowEdit(false)}/>}
   </div>;
