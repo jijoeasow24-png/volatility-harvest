@@ -523,12 +523,63 @@ function MarketsTab(){
 // ─── WATCHLIST TAB ──────────────────────────────────────────────────────────
 function WatchlistTab(){
   const [search,setSearch]=useState('');const [theme,setTheme]=useState('All');const [role,setRole]=useState(null);const [sel,setSel]=useState(null);
+  const [lticker,setLticker]=useState('');const [lresult,setLresult]=useState(null);const [lload,setLload]=useState(false);const [lerr,setLerr]=useState(null);
+
+  const doLookup=async()=>{
+    const t=lticker.toUpperCase().trim();if(!t)return;
+    setLload(true);setLresult(null);setLerr(null);
+    try{
+      const [qRes,sRes]=await Promise.all([fetch(`/api/quotes?tickers=${t}`),fetch(`/api/sparkline?tickers=${t}`)]);
+      const qd=await qRes.json();const sd=await sRes.json();
+      const q=qd[t];if(!q||!q.price)throw new Error('not found');
+      setLresult({ticker:t,q,spark:sd[t]});
+    }catch(e){setLerr('Could not find "'+lticker.toUpperCase().trim()+'" — check the ticker symbol');}
+    setLload(false);
+  };
+
   const filtered=useMemo(()=>{let l=WATCHLIST;if(theme!=='All')l=l.filter(w=>w.theme===theme);if(role)l=l.filter(w=>w.role===role);if(search)l=l.filter(w=>w.ticker.toLowerCase().includes(search.toLowerCase())||w.name.toLowerCase().includes(search.toLowerCase()));return l;},[search,theme,role]);
   const grouped=useMemo(()=>{const g={};filtered.forEach(w=>{if(!g[w.theme])g[w.theme]=[];g[w.theme].push(w);});return g;},[filtered]);
   const order=['Broad Market','Technology','Healthcare','Commodities','Diversifiers','Hedges'];const icons={'Broad Market':'📊','Technology':'💻','Healthcare':'🏥','Commodities':'🏗️','Diversifiers':'🔄','Hedges':'🛡️'};
+
   if(sel)return<div className="fade-in"><button onClick={()=>setSel(null)} style={{display:'flex',alignItems:'center',gap:4,background:'none',border:'none',color:'var(--blue)',fontSize:13,fontWeight:600,marginBottom:12,padding:0}}><Icon name="back" size={16} color="var(--blue)"/> Back</button><div className="card"><div style={{fontSize:22,fontWeight:800}}>{sel.ticker}</div><div style={{color:'var(--text2)'}}>{sel.name}</div>{sel.notes&&<div style={{marginTop:8,color:'var(--blue)',background:'var(--blue-bg)',padding:8,borderRadius:6,fontSize:13}}>{sel.notes}</div>}</div><div className="card"><div className="card-title" style={{marginBottom:10}}>🎯 Triggers</div><div className="divider"/>{[{c:'var(--green)',l:'ADD',v:sel.addTrigger},{c:'var(--orange)',l:'TRIM',v:sel.trimTrigger},{c:'var(--red)',l:'Stop-Loss',v:sel.stopLoss}].map((t,i)=><div key={i} style={{display:'flex',gap:10,padding:'10px 0',borderBottom:i<2?'1px solid var(--border)':'none'}}><span style={{fontSize:18,color:t.c}}>{t.l==='ADD'?'↓':t.l==='TRIM'?'↑':'⚠'}</span><div><div style={{fontSize:11,fontWeight:700,color:'var(--text3)'}}>{t.l}</div><div style={{fontSize:14}}>{t.v}</div></div></div>)}</div></div>;
-  return<div className="fade-in"><div className="page-header"><div className="page-title">Watchlist</div></div><div style={{position:'relative',marginBottom:10}}><span style={{position:'absolute',left:10,top:9,color:'var(--text3)'}}><Icon name="search" size={16}/></span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search…" style={{paddingLeft:32}}/></div><div className="chip-row" style={{marginBottom:8}}>{['All',...order].map(t=><button key={t} className={`chip ${theme===t?'active':''}`} onClick={()=>setTheme(t)}>{t}</button>)}</div><div style={{display:'flex',gap:6,alignItems:'center',marginBottom:12}}><span style={{fontSize:11,color:'var(--text3)'}}>Role:</span><button className={`chip ${!role?'active':''}`} onClick={()=>setRole(null)}>All</button>{['Core','Satellite','Hedge'].map(r=><button key={r} className={`chip ${role===r?'active':''}`} onClick={()=>setRole(role===r?null:r)}>{r}</button>)}<span style={{marginLeft:'auto',fontSize:10,color:'var(--text3)'}}>{filtered.length}</span></div>
-  {order.filter(t=>grouped[t]).map(t=><div key={t}><div style={{fontSize:13,fontWeight:700,padding:'8px 0',color:'var(--text2)'}}>{icons[t]} {t} ({grouped[t].length})</div>{grouped[t].map(w=><div key={w.ticker} className="card" style={{cursor:'pointer',padding:12}} onClick={()=>setSel(w)}><div style={{display:'flex',justifyContent:'space-between'}}><div><div style={{display:'flex',gap:6}}><span style={{fontWeight:800}}>{w.ticker}</span><RoleBadge role={w.role}/></div><div style={{fontSize:11,color:'var(--text3)'}}>{w.name}</div></div><div style={{textAlign:'right',fontSize:11,color:'var(--text2)'}}>{w.addTrigger}</div></div></div>)}</div>)}</div>;
+
+  return<div className="fade-in">
+    <div className="page-header"><div className="page-title">Watchlist</div></div>
+
+    {/* ── Live Stock Lookup ── */}
+    <div className="card" style={{marginBottom:16}}>
+      <div className="card-title" style={{marginBottom:10}}>🔍 Live Stock Lookup</div>
+      <div className="divider"/>
+      <div style={{display:'flex',gap:8,marginBottom:8}}>
+        <input value={lticker} onChange={e=>setLticker(e.target.value.toUpperCase())} onKeyDown={e=>e.key==='Enter'&&doLookup()} placeholder="Type any ticker… e.g. AAPL" style={{textTransform:'uppercase',flex:1}}/>
+        <button className="btn btn-primary" style={{padding:'8px 14px',whiteSpace:'nowrap'}} onClick={doLookup} disabled={lload||!lticker.trim()}>{lload?<Spinner/>:'Look Up'}</button>
+      </div>
+      {lerr&&<div style={{fontSize:12,color:'var(--red)',padding:'6px 0'}}>{lerr}</div>}
+      {lresult&&(()=>{const {ticker,q,spark}=lresult;const up=q.change>=0;const pct52=(q.fiftyTwoWeekLow&&q.fiftyTwoWeekHigh)?Math.round(((q.price-q.fiftyTwoWeekLow)/(q.fiftyTwoWeekHigh-q.fiftyTwoWeekLow||1))*100):null;const zone=pct52===null?null:pct52<=15?{label:'Near 52W Low — potential buy zone',color:'var(--green)'}:pct52>=85?{label:'Near 52W High — consider trimming',color:'var(--orange)'}:{label:'Mid-range',color:'var(--text3)'};const ms=q.marketState;const msLabel={PRE:'Pre-Market',POST:'After Hours',REGULAR:'Market Open'}[ms]||'Closed';const msColor=ms==='REGULAR'?'var(--green)':(ms==='PRE'||ms==='POST')?'var(--orange)':'var(--text3)';
+      return<div style={{background:'var(--bg3)',borderRadius:10,padding:12}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
+          <div><div style={{fontSize:18,fontWeight:800}}>{ticker}</div>{q.name&&<div style={{fontSize:11,color:'var(--text3)'}}>{q.name}</div>}</div>
+          <div style={{textAlign:'right'}}>
+            <div className="mono" style={{fontSize:20,fontWeight:800}}>${q.price.toFixed(2)}</div>
+            <span className="badge" style={{background:up?'var(--green-bg)':'var(--red-bg)',color:up?'var(--green)':'var(--red)'}}>{up?'▲':'▼'}{up?'+':''}{q.changePct.toFixed(2)}%</span>
+          </div>
+        </div>
+        {spark&&<div style={{marginBottom:8}}><Sparkline data={spark} width={280} height={40}/></div>}
+        {pct52!==null&&<><RangeBar52 low={q.fiftyTwoWeekLow} high={q.fiftyTwoWeekHigh} current={q.price}/><div style={{fontSize:11,color:'var(--text3)',display:'flex',justifyContent:'space-between',marginTop:2,marginBottom:8}}><span>52W: ${q.fiftyTwoWeekLow?.toFixed(2)} – ${q.fiftyTwoWeekHigh?.toFixed(2)}</span><span style={{color:zone.color,fontWeight:600}}>{pct52}% of range</span></div></>}
+        <div style={{display:'flex',justifyContent:'space-between',fontSize:11}}>
+          {zone&&<span style={{color:zone.color,fontWeight:600}}>📍 {zone.label}</span>}
+          <span style={{color:msColor,fontWeight:600}}>{msLabel}</span>
+        </div>
+        {q.avgVolume>0&&<div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>Vol: {fmtVol(q.volume)} · Avg: {fmtVol(q.avgVolume)} · {(q.volume/q.avgVolume).toFixed(1)}x</div>}
+      </div>;})()}
+    </div>
+
+    {/* ── Curated Watchlist ── */}
+    <div style={{position:'relative',marginBottom:10}}><span style={{position:'absolute',left:10,top:9,color:'var(--text3)'}}><Icon name="search" size={16}/></span><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Filter watchlist…" style={{paddingLeft:32}}/></div>
+    <div className="chip-row" style={{marginBottom:8}}>{['All',...order].map(t=><button key={t} className={`chip ${theme===t?'active':''}`} onClick={()=>setTheme(t)}>{t}</button>)}</div>
+    <div style={{display:'flex',gap:6,alignItems:'center',marginBottom:12}}><span style={{fontSize:11,color:'var(--text3)'}}>Role:</span><button className={`chip ${!role?'active':''}`} onClick={()=>setRole(null)}>All</button>{['Core','Satellite','Hedge'].map(r=><button key={r} className={`chip ${role===r?'active':''}`} onClick={()=>setRole(role===r?null:r)}>{r}</button>)}<span style={{marginLeft:'auto',fontSize:10,color:'var(--text3)'}}>{filtered.length}</span></div>
+    {order.filter(t=>grouped[t]).map(t=><div key={t}><div style={{fontSize:13,fontWeight:700,padding:'8px 0',color:'var(--text2)'}}>{icons[t]} {t} ({grouped[t].length})</div>{grouped[t].map(w=><div key={w.ticker} className="card" style={{cursor:'pointer',padding:12}} onClick={()=>setSel(w)}><div style={{display:'flex',justifyContent:'space-between'}}><div><div style={{display:'flex',gap:6}}><span style={{fontWeight:800}}>{w.ticker}</span><RoleBadge role={w.role}/></div><div style={{fontSize:11,color:'var(--text3)'}}>{w.name}</div></div><div style={{textAlign:'right',fontSize:11,color:'var(--text2)'}}>{w.addTrigger}</div></div></div>)}</div>)}
+  </div>;
 }
 
 // ─── MAIN APP ───────────────────────────────────────────────────────────────
@@ -662,9 +713,9 @@ function IntelTab(){
   </div>;
 }
 
-function App(){const [tab,setTab]=useState('dashboard');const tabs=[{id:'dashboard',label:'Dashboard',icon:'dashboard'},{id:'intel',label:'Intel',icon:'zap'},{id:'regime',label:'Regime',icon:'regime'},{id:'signals',label:'Signals',icon:'signals'},{id:'portfolio',label:'Portfolio',icon:'portfolio'},{id:'markets',label:'Markets',icon:'markets'}];
+function App(){const [tab,setTab]=useState('dashboard');const tabs=[{id:'dashboard',label:'Dashboard',icon:'dashboard'},{id:'intel',label:'Intel',icon:'zap'},{id:'regime',label:'Regime',icon:'regime'},{id:'signals',label:'Signals',icon:'signals'},{id:'portfolio',label:'Portfolio',icon:'portfolio'},{id:'watchlist',label:'Watchlist',icon:'watchlist'},{id:'markets',label:'Markets',icon:'markets'}];
 return<AppProvider><AppContent tab={tab} setTab={setTab} tabs={tabs}/></AppProvider>;}
-function AppContent({tab,setTab,tabs}){const app=useApp();return<div className="app">{app.notification&&<div style={{position:'fixed',top:0,left:0,right:0,zIndex:200,padding:12,background:'linear-gradient(135deg,#b91c1c,#dc2626)',color:'#fff',fontSize:13,fontWeight:600,display:'flex',justifyContent:'space-between'}}><span>{app.notification.text}</span><button onClick={()=>app.setNotification(null)} style={{background:'none',border:'none',color:'#fff',fontWeight:700}}>✕</button></div>}<div className="main">{tab==='dashboard'&&<DashboardTab/>}{tab==='intel'&&<IntelTab/>}{tab==='regime'&&<RegimeTab/>}{tab==='signals'&&<SignalsTab/>}{tab==='portfolio'&&<PortfolioTab/>}{tab==='markets'&&<MarketsTab/>}</div><div className="tab-bar">{tabs.map(t=><button key={t.id} className={`tab-btn ${tab===t.id?'active':''}`} onClick={()=>setTab(t.id)}><Icon name={t.icon} size={20} color={tab===t.id?'var(--blue)':'var(--text3)'}/><span>{t.label}</span></button>)}</div></div>;}
+function AppContent({tab,setTab,tabs}){const app=useApp();return<div className="app">{app.notification&&<div style={{position:'fixed',top:0,left:0,right:0,zIndex:200,padding:12,background:'linear-gradient(135deg,#b91c1c,#dc2626)',color:'#fff',fontSize:13,fontWeight:600,display:'flex',justifyContent:'space-between'}}><span>{app.notification.text}</span><button onClick={()=>app.setNotification(null)} style={{background:'none',border:'none',color:'#fff',fontWeight:700}}>✕</button></div>}<div className="main">{tab==='dashboard'&&<DashboardTab/>}{tab==='intel'&&<IntelTab/>}{tab==='regime'&&<RegimeTab/>}{tab==='signals'&&<SignalsTab/>}{tab==='portfolio'&&<PortfolioTab/>}{tab==='watchlist'&&<WatchlistTab/>}{tab==='markets'&&<MarketsTab/>}</div><div className="tab-bar">{tabs.map(t=><button key={t.id} className={`tab-btn ${tab===t.id?'active':''}`} onClick={()=>setTab(t.id)}><Icon name={t.icon} size={20} color={tab===t.id?'var(--blue)':'var(--text3)'}/><span>{t.label}</span></button>)}</div></div>;}
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
