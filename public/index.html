@@ -375,7 +375,7 @@ function WeeklySummary(){
   const weeklyData=useMemo(()=>app.positions.map(p=>{
     const spark=app.sparklines[p.ticker.toUpperCase()];
     if(!spark||spark.length<2)return null;
-    const weekAgo=spark[0];const now=p.currentPrice||spark[spark.length-1];
+    const weekAgo=spark[0].c;const now=p.currentPrice||spark[spark.length-1].c;
     const weekPct=((now-weekAgo)/weekAgo)*100;
     const weekDollar=(now-weekAgo)*p.shares;
     return{pos:p,weekPct,weekDollar};
@@ -391,7 +391,7 @@ function WeeklySummary(){
     try{
       const [qRes,sRes]=await Promise.all([fetch(`/api/quotes?tickers=${candidates.join(',')}`),fetch(`/api/sparkline?tickers=${candidates.join(',')}`)]);
       const qd=await qRes.json();const sd=await sRes.json();
-      const items=candidates.map(t=>{const q=qd[t];const sp=sd[t];if(!q||!sp||sp.length<2)return null;const wPct=((q.price-sp[0])/sp[0])*100;return{ticker:t,price:q.price,weekPct:wPct};}).filter(Boolean).sort((a,b)=>b.weekPct-a.weekPct).slice(0,6);
+      const items=candidates.map(t=>{const q=qd[t];const sp=sd[t];if(!q||!sp||sp.length<2)return null;const wAgo=sp[0].c;const wPct=((q.price-wAgo)/wAgo)*100;return{ticker:t,price:q.price,weekPct:wPct};}).filter(Boolean).sort((a,b)=>b.weekPct-a.weekPct).slice(0,6);
       setMissed(items);
     }catch(e){setMissed([]);}setMLoad(false);
   };
