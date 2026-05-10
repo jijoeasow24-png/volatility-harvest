@@ -515,8 +515,6 @@ function DashboardTab(){
   return<div className="fade-in">
     <div className="page-header"><div><div className="page-title">Dashboard</div><div style={{fontSize:11,color:'var(--text3)',display:'flex',alignItems:'center',gap:4,marginTop:2}}>{app.isRefreshing?<><Spinner/> Updating…</>:app.refreshError?<span style={{color:'var(--orange)'}}>{app.refreshError}</span>:<><span className="status-dot" style={{background:'var(--green)'}}/>{refreshLabel}</>}</div></div><div className="header-actions"><button className="theme-toggle" onClick={app.toggleTheme}>{app.theme==='dark'?<Icon name="sun" size={16}/>:<Icon name="moon" size={16}/>}</button><button className="refresh-btn" onClick={app.refreshPrices} disabled={app.isRefreshing}><Icon name="refresh" size={14}/></button></div></div>
 
-    <MonthlyActionPlan/>
-
     <div className="stats-grid">
       <div className="stat-card"><div className="stat-label">Portfolio Value</div><div className="stat-value mono">{fmt$(app.portfolioTotal)}</div><div className="stat-sub" style={{color:'var(--green)',fontSize:10}}>Auto-calculated</div></div>
       <div className="stat-card"><div className="stat-label">Total P&L</div><div className="stat-value mono" style={{color:pnlColor(app.totalPnL)}}>{pnlSign(app.totalPnL)}{fmt$(app.totalPnL)}</div><div className="stat-sub">{pnlSign(app.totalPnLPct)}{fmtPct(app.totalPnLPct)}</div></div>
@@ -525,6 +523,8 @@ function DashboardTab(){
     </div>
 
     <WeeklySummary/>
+
+    <MonthlyActionPlan/>
 
     <div className="card"><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><span style={{fontSize:12,fontWeight:700,color:'var(--text3)',textTransform:'uppercase'}}>Drawdown</span><span className="mono" style={{fontSize:18,fontWeight:800,color:app.circuitLevel.color}}>{fmtPct(app.drawdown)}</span></div><div className="progress-bar"><div className="progress-fill" style={{width:Math.min(100,Math.abs(app.drawdown)/Math.max(15,Math.ceil(Math.abs(app.drawdown)/5)*5)*100)+'%',background:'linear-gradient(90deg,var(--green),#eab308,var(--orange),var(--red))'}}/></div><div style={{display:'flex',justifyContent:'space-between',marginTop:4,fontSize:10,color:'var(--text3)'}}>{(()=>{const s=Math.max(15,Math.ceil(Math.abs(app.drawdown)/5)*5);return[0,Math.round(s/3),Math.round(2*s/3),s].map((v,i)=><span key={i}>{v===0?'0%':'-'+v+'%'}</span>);})()}</div></div>
 
