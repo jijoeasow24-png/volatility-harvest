@@ -425,41 +425,48 @@ function getInvalidation(pos,tech,role){
   return{price:stopPrice,reason:`${Math.abs(role.stopLoss*100).toFixed(0)}% decline from entry — hard stop`};
 }
 
-// ─── BUY SCORE ENGINE ───────────────────────────────────────────────────────
-function calcBuyScore(tech,regime,circuitName){
+// ─── SETUP SCORE ENGINE ─────────────────────────────────────────────────────
+function calcBuyScore(tech,regime,circuitName,rr){
   if(!tech)return null;
   let score=0;
-  // RSI component (0-25)
+  // RSI component (0-20)
   const r=tech.rsi;
-  if(r>=50&&r<65)score+=25;
-  else if(r>=35&&r<50)score+=20;
-  else if(r>=65&&r<=70)score+=15;
-  else if(r>=30&&r<35)score+=15;
-  else if(r<30)score+=10;
-  else score+=5; // >70 overbought
-  // MA50 distance component (0-25)
+  if(r>=50&&r<65)score+=20;
+  else if(r>=35&&r<50)score+=16;
+  else if(r>=65&&r<=70)score+=12;
+  else if(r>=30&&r<35)score+=12;
+  else if(r<30)score+=8;
+  else score+=4; // >70 overbought
+  // MA50 distance component (0-20)
   const m=tech.pctFromMa50;
-  if(m>=-2&&m<=0)score+=25;       // right at MA, slight pullback
-  else if(m>0&&m<=3)score+=22;    // just above, strong
-  else if(m>=-5&&m<-2)score+=18;  // modest pullback
-  else if(m>3&&m<=8)score+=12;    // extended above
-  else if(m>=-10&&m<-5)score+=10; // larger pullback
-  else if(m>8)score+=4;           // very extended up
-  else score+=4;                  // >10% below MA, danger
-  // Regime component (0-25)
-  const reg={'Risk-On':25,'Inflation Spike':18,'Risk-Off':12,'Oil Shock':12,'Recession Scare':5,'Not Assessed':0};
+  if(m>=-2&&m<=0)score+=20;
+  else if(m>0&&m<=3)score+=18;
+  else if(m>=-5&&m<-2)score+=14;
+  else if(m>3&&m<=8)score+=10;
+  else if(m>=-10&&m<-5)score+=8;
+  else score+=3;
+  // Regime component (0-20)
+  const reg={'Risk-On':20,'Inflation Spike':14,'Risk-Off':10,'Oil Shock':10,'Recession Scare':4,'Not Assessed':0};
   score+=(reg[regime]??0);
-  // Circuit component (0-25)
-  const ckt={'Normal':25,'Yellow Alert':18,'Orange Alert':8,'Red Alert':3,'HARD STOP':0};
+  // Circuit component (0-20)
+  const ckt={'Normal':20,'Yellow Alert':14,'Orange Alert':6,'Red Alert':2,'HARD STOP':0};
   score+=(ckt[circuitName]??0);
+  // R:R component (0-20) — integrates trade management into the score
+  if(rr!=null){
+    if(rr>=3)score+=20;
+    else if(rr>=2)score+=15;
+    else if(rr>=1.5)score+=10;
+    else if(rr>=1)score+=4;
+    else score+=0; // R:R < 1 → no credit, thesis is poor at current price
+  }
   return Math.min(100,score);
 }
 function scoreLabel(s){
   if(s===null)return{label:'N/A',color:'var(--text3)',bg:'var(--bg2)'};
-  if(s>=75)return{label:'Strong Buy',color:'var(--green)',bg:'var(--green-bg)'};
-  if(s>=55)return{label:'Moderate',color:'#eab308',bg:'#eab30815'};
+  if(s>=75)return{label:'Strong Setup',color:'var(--green)',bg:'var(--green-bg)'};
+  if(s>=55)return{label:'Moderate Setup',color:'#eab308',bg:'#eab30815'};
   if(s>=35)return{label:'Neutral',color:'var(--text3)',bg:'var(--bg2)'};
-  return{label:'Avoid',color:'var(--red)',bg:'var(--red-bg)'};
+  return{label:'Poor Setup',color:'var(--red)',bg:'var(--red-bg)'};
 }
 function RsiBadge({rsi}){
   if(rsi==null)return null;
@@ -485,7 +492,7 @@ function NoQualitySetups(){
   const hasQuality=app.positions.some(p=>{
     const sig=getSignal(p);
     const tech=app.technicals[p.ticker.toUpperCase()];
-    const score=calcBuyScore(tech,app.regime,app.circuitLevel.name);
+    const rrLocal=calcRR({...p,currentPrice:p.currentPrice},ROLES[p.role]);const score=calcBuyScore(tech,app.regime,app.circuitLevel.name,rrLocal);
     return sig.name.includes('ADD')&&(score||0)>=55&&app.circuitLevel.name==='Normal';
   });
   const conditionsPoor=app.circuitLevel.name!=='Normal'||['Risk-Off','Recession Scare'].includes(app.regime);
@@ -765,7 +772,7 @@ function SignalsTab(){
   const sorted=useMemo(()=>{const order=['EXIT — STOP LOSS','TRIM STRONG','TRIM','ADD STRONG','ADD','HOLD'];const list=[...app.positions];if(sortBy==='signal')list.sort((a,b)=>order.indexOf(getSignal(a).name)-order.indexOf(getSignal(b).name));else if(sortBy==='pnl')list.sort((a,b)=>Math.abs(getPnlPct(b))-Math.abs(getPnlPct(a)));else list.sort((a,b)=>a.ticker.localeCompare(b.ticker));return list;},[app.positions,sortBy]);
   if(selected)return<PositionDetail pos={selected} onBack={()=>setSelected(null)}/>;
   return<div className="fade-in"><div className="page-header"><div className="page-title">Trade Signals</div><button className="refresh-btn" onClick={()=>setShowAdd(true)}><Icon name="plus" size={14}/> Add</button></div>{app.circuitLevel.name==='HARD STOP'&&<div className="card" style={{background:'var(--red-bg)',borderColor:'#b91c1c44',marginBottom:12}}><div style={{fontSize:12,fontWeight:800,color:'#f87171',marginBottom:4}}>⛔ HARD STOP Active</div><div style={{fontSize:12,color:'var(--red)'}}>Only act on EXIT signals. ADD and TRIM signals are suspended until circuit breaker clears (SPY holds 50-day MA for 2 consecutive weeks).</div></div>}<div style={{display:'flex',gap:6,marginBottom:12}}>{['signal','pnl','name'].map(s=><button key={s} className={`chip ${sortBy===s?'active':''}`} onClick={()=>setSortBy(s)}>{s==='signal'?'Signal':s==='pnl'?'P&L %':'Name'}</button>)}</div>
-  {sorted.map(pos=>{const sig=getSignal(pos);const pct=getPnlPct(pos);const tech=app.technicals[pos.ticker.toUpperCase()];const score=calcBuyScore(tech,app.regime,app.circuitLevel.name);const sl=scoreLabel(score);return<div key={pos.id} className="card" style={{cursor:'pointer',padding:12}} onClick={()=>setSelected(pos)}>
+  {sorted.map(pos=>{const sig=getSignal(pos);const pct=getPnlPct(pos);const tech=app.technicals[pos.ticker.toUpperCase()];const rrp=calcRR(pos,ROLES[pos.role]);const score=calcBuyScore(tech,app.regime,app.circuitLevel.name,rrp);const sl=scoreLabel(score);return<div key={pos.id} className="card" style={{cursor:'pointer',padding:12}} onClick={()=>setSelected(pos)}>
     <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
       <div style={{flex:1}}><div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:15,fontWeight:800}}>{pos.ticker}</span><RoleBadge role={pos.role}/></div><div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>{pos.name}</div></div>
       <Sparkline data={app.sparklines[pos.ticker.toUpperCase()]} width={60} height={20}/>
@@ -774,7 +781,7 @@ function SignalsTab(){
     {tech&&<div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap',alignItems:'center'}}>
       <RsiBadge rsi={tech.rsi}/>
       <MaBadge pctFromMa50={tech.pctFromMa50}/>
-      {score!==null&&<span style={{fontSize:10,fontWeight:800,color:sl.color,background:sl.bg,borderRadius:4,padding:'2px 8px',marginLeft:'auto'}}>Score {score}/100 · {sl.label}</span>}
+      {score!==null&&<span style={{fontSize:10,fontWeight:800,color:sl.color,background:sl.bg,borderRadius:4,padding:'2px 8px',marginLeft:'auto'}}>Setup {score}/100 · {sl.label}</span>}
     </div>}
   </div>;})}
   {showAdd&&<PositionModal onClose={()=>setShowAdd(false)} position={null}/>}</div>;
@@ -787,8 +794,8 @@ function PositionDetail({pos,onBack}){
   const sig=getSignal(pos);const pct=getPnlPct(pos);const pnl=pos.currentPrice*pos.shares-pos.buyPrice*pos.shares;
   const role=ROLES[pos.role];const q=app.quotes[pos.ticker.toUpperCase()];
   const tech=app.technicals[pos.ticker.toUpperCase()];
-  const score=calcBuyScore(tech,app.regime,app.circuitLevel.name);const sl=scoreLabel(score);
   const rr=calcRR(pos,role);
+  const score=calcBuyScore(tech,app.regime,app.circuitLevel.name,rr);const sl=scoreLabel(score);
   const why=getWhySignal(pos,tech,app.regime,app.circuitLevel.name);
   const inv=getInvalidation(pos,tech,role);
   const isExit=sig.name.includes('STOP');const isTrimStrong=sig.name.includes('TRIM STRONG');const isTrim=sig.name.includes('TRIM')&&!isTrimStrong;const isAdd=sig.name.includes('ADD');
@@ -868,18 +875,19 @@ function PositionDetail({pos,onBack}){
         <div style={{background:'var(--green-bg)',borderRadius:6,padding:'8px 10px'}}><div style={{fontSize:10,color:'var(--text3)',fontWeight:700}}>UPSIDE TARGET</div><div style={{fontWeight:800,color:'var(--green)'}}>${(pos.buyPrice*(1+role.trimPct)).toFixed(2)}</div><div style={{fontSize:11,color:'var(--text3)'}}>+{(role.trimPct*100).toFixed(0)}% from entry</div></div>
         <div style={{background:'var(--red-bg)',borderRadius:6,padding:'8px 10px'}}><div style={{fontSize:10,color:'var(--text3)',fontWeight:700}}>DOWNSIDE RISK</div><div style={{fontWeight:800,color:'var(--red)'}}>${(pos.buyPrice*(1+role.stopLoss)).toFixed(2)}</div><div style={{fontSize:11,color:'var(--text3)'}}>{(role.stopLoss*100).toFixed(0)}% from entry</div></div>
       </div>
-      {rr<1.5&&<div style={{background:'var(--red-bg)',borderRadius:6,padding:'8px 10px',fontSize:12,color:'var(--red)',fontWeight:600}}>⚠️ R:R below 1.5 — unfavourable. Wait for a better entry point or skip this trade.</div>}
-      {rr>=1.5&&rr<2&&<div style={{background:'#eab30815',borderRadius:6,padding:'8px 10px',fontSize:12,color:'#eab308',fontWeight:600}}>R:R is acceptable but not ideal. Reduce size or wait for a pullback closer to support.</div>}
-      {rr>=2&&<div style={{background:'var(--green-bg)',borderRadius:6,padding:'8px 10px',fontSize:12,color:'var(--green)',fontWeight:600}}>✅ Solid R:R ratio — setup has a favourable probability-weighted outcome.</div>}
+      {rr<1.5&&(isAdd?<div style={{background:'var(--red-bg)',borderRadius:6,padding:'8px 10px',fontSize:12,color:'var(--red)',fontWeight:600}}>⚠️ ADD signal conflicts with poor R:R. If you add, use minimum size only. A pullback toward ${(pos.buyPrice*(1+role.addPct)).toFixed(0)} would restore a better ratio.</div>:<div style={{background:'var(--red-bg)',borderRadius:6,padding:'8px 10px',fontSize:12,color:'var(--red)',fontWeight:600}}>⚠️ Poor R:R at current price — not a good level to add more shares. Maintain your existing position and wait.</div>)}
+      {rr>=1.5&&rr<2&&<div style={{background:'#eab30815',borderRadius:6,padding:'8px 10px',fontSize:12,color:'#eab308',fontWeight:600}}>R:R is acceptable. If adding, keep size modest — a pullback to MA50 would offer a stronger entry.</div>}
+      {rr>=2&&<div style={{background:'var(--green-bg)',borderRadius:6,padding:'8px 10px',fontSize:12,color:'var(--green)',fontWeight:600}}>✅ Solid R:R — the potential reward justifies the risk at current price.</div>}
     </div>}
 
-    {/* ── Buy Score ── */}
+    {/* ── Setup Score ── */}
     {tech&&score!==null&&<div className="card">
-      <div className="card-header"><span className="card-title">🧠 Buy Score</span><span style={{fontSize:20,fontWeight:900,color:sl.color}}>{score}<span style={{fontSize:12,color:'var(--text3)'}}>/100</span></span></div>
+      <div className="card-header"><span className="card-title">🧠 Setup Score</span><span style={{fontSize:20,fontWeight:900,color:sl.color}}>{score}<span style={{fontSize:12,color:'var(--text3)'}}>/100</span></span></div>
       <div className="divider"/>
-      <div style={{background:sl.bg,borderRadius:8,padding:'8px 12px',marginBottom:10,display:'flex',justifyContent:'space-between',alignItems:'center'}}><span style={{fontWeight:800,color:sl.color,fontSize:14}}>{sl.label}</span>{score>=75&&<span style={{fontSize:12}}>✅ All systems aligned</span>}{score>=55&&score<75&&<span style={{fontSize:12}}>⚡ Good setup, confirm regime</span>}{score<55&&<span style={{fontSize:12}}>⏸️ Wait for better setup</span>}</div>
+      <div style={{fontSize:11,color:'var(--text3)',marginBottom:8}}>Measures trend strength + R:R quality — not a standalone buy instruction.</div>
+      <div style={{background:sl.bg,borderRadius:8,padding:'8px 12px',marginBottom:10,display:'flex',justifyContent:'space-between',alignItems:'center'}}><span style={{fontWeight:800,color:sl.color,fontSize:14}}>{sl.label}</span>{score>=75&&<span style={{fontSize:12}}>✅ Technical + R:R aligned</span>}{score>=55&&score<75&&<span style={{fontSize:12}}>⚡ Decent setup, verify R:R</span>}{score<55&&<span style={{fontSize:12}}>⏸️ Setup not favourable</span>}</div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-        {[{label:'RSI',value:tech.rsi,detail:tech.rsi<30?'Oversold':tech.rsi<50?'Weak':tech.rsi<65?'Bullish':tech.rsi<=70?'Hot':'Overbought'},{label:'vs MA50',value:(tech.pctFromMa50>=0?'+':'')+tech.pctFromMa50+'%',detail:tech.pctFromMa50>=-2&&tech.pctFromMa50<=3?'Ideal zone':tech.pctFromMa50<-10?'Extended low':'Normal'},{label:'Regime',value:app.regime,detail:app.regime==='Risk-On'?'Max points':'Reduced'},{label:'Circuit',value:app.circuitLevel.name,detail:app.circuitLevel.name==='Normal'?'Clear':'Caution'}].map((row,i)=><div key={i} style={{background:'var(--bg2)',borderRadius:6,padding:'6px 10px'}}><div style={{fontSize:10,color:'var(--text3)',fontWeight:600}}>{row.label}</div><div style={{fontWeight:800,fontSize:13}}>{row.value}</div><div style={{fontSize:10,color:'var(--text3)'}}>{row.detail}</div></div>)}
+        {[{label:'RSI',value:tech.rsi,detail:tech.rsi<30?'Oversold':tech.rsi<50?'Weak':tech.rsi<65?'Bullish':tech.rsi<=70?'Hot':'Overbought'},{label:'vs MA50',value:(tech.pctFromMa50>=0?'+':'')+tech.pctFromMa50+'%',detail:tech.pctFromMa50>=-2&&tech.pctFromMa50<=3?'Ideal zone':tech.pctFromMa50<-10?'Extended low':'Normal'},{label:'Regime',value:app.regime,detail:app.regime==='Risk-On'?'Max points':'Reduced'},{label:'R:R Ratio',value:rr!==null?rr+':1':'N/A',detail:rr===null?'—':rr>=2?'Favourable':rr>=1.5?'Acceptable':'Poor — penalised'}].map((row,i)=><div key={i} style={{background:'var(--bg2)',borderRadius:6,padding:'6px 10px'}}><div style={{fontSize:10,color:'var(--text3)',fontWeight:600}}>{row.label}</div><div style={{fontWeight:800,fontSize:13,color:row.label==='R:R Ratio'&&rr!==null?(rr>=2?'var(--green)':rr>=1.5?'#eab308':'var(--red)'):'inherit'}}>{row.value}</div><div style={{fontSize:10,color:'var(--text3)'}}>{row.detail}</div></div>)}
       </div>
     </div>}
 
