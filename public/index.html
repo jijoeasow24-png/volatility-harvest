@@ -364,6 +364,67 @@ function RecordTradeModal({onClose}){
   </div></div>;
 }
 
+// ─── DECISION FRAMEWORK HELPERS ─────────────────────────────────────────────
+function calcRR(pos,role){
+  const upside=pos.buyPrice*(1+role.trimPct)-pos.currentPrice;
+  const downside=pos.currentPrice-pos.buyPrice*(1+role.stopLoss);
+  if(downside<=0||upside<=0)return null;
+  return Math.round((upside/downside)*10)/10;
+}
+function getWhySignal(pos,tech,regime,circuitName){
+  const pct=getPnlPct(pos);const role=ROLES[pos.role];const sig=getSignal(pos);
+  const checks=[],warnings=[];
+  // P&L position
+  if(pct>0)checks.push(`Up ${pct.toFixed(1)}% from your entry`);
+  else warnings.push(`Down ${Math.abs(pct).toFixed(1)}% from your entry`);
+  // RSI
+  if(tech?.rsi!=null){
+    if(tech.rsi>=50&&tech.rsi<65)checks.push(`RSI ${tech.rsi} — ideal bullish momentum zone`);
+    else if(tech.rsi>=65&&tech.rsi<=70)warnings.push(`RSI ${tech.rsi} — momentum heating up, watch closely`);
+    else if(tech.rsi>70)warnings.push(`RSI ${tech.rsi} — overbought, elevated trim risk`);
+    else if(tech.rsi<30)checks.push(`RSI ${tech.rsi} — oversold, potential mean-reversion bounce`);
+    else warnings.push(`RSI ${tech.rsi} — momentum weak, below neutral`);
+  }
+  // MA50
+  if(tech?.pctFromMa50!=null){
+    if(tech.pctFromMa50>=0&&tech.pctFromMa50<=5)checks.push(`Price ${tech.pctFromMa50>0?'+':''}${tech.pctFromMa50}% vs 50-day MA — healthy trend`);
+    else if(tech.pctFromMa50>5)warnings.push(`Price +${tech.pctFromMa50}% above 50-day MA — extended, lower add priority`);
+    else if(tech.pctFromMa50>=-8)warnings.push(`Price ${tech.pctFromMa50}% below 50-day MA — watch support`);
+    else warnings.push(`Price ${tech.pctFromMa50}% below 50-day MA — trend under pressure`);
+  }
+  // MA200
+  if(tech?.pctFromMa200!=null){
+    if(tech.pctFromMa200>=0)checks.push(`Price above 200-day MA — long-term uptrend intact`);
+    else warnings.push(`Price below 200-day MA — long-term trend broken`);
+  }
+  // Volume
+  if(tech?.volRatio!=null){
+    if(tech.volRatio>=1.5)checks.push(`Volume ${tech.volRatio}× average — strong institutional participation`);
+    else if(tech.volRatio<0.7)warnings.push(`Volume ${tech.volRatio}× average — low conviction on move`);
+  }
+  // Regime
+  if(regime==='Risk-On')checks.push('Market regime = Risk-On — favorable for buying');
+  else if(regime==='Risk-Off')warnings.push('Market regime = Risk-Off — headwind, reduce exposure');
+  else if(regime==='Recession Scare')warnings.push('Market regime = Recession Scare — defensive posture only');
+  else if(regime!=='Not Assessed')warnings.push(`Market regime = ${regime} — selective exposure`);
+  // Circuit
+  if(circuitName==='Normal')checks.push('Circuit breaker = Normal — all systems clear');
+  else warnings.push(`Circuit breaker = ${circuitName} — reduce position sizing`);
+  // Signal context
+  if(sig.name.includes('STOP'))warnings.push(`Stop-loss level breached — protecting capital is priority`);
+  else if(sig.name.includes('TRIM STRONG'))warnings.push(`Up ${pct.toFixed(1)}% — strong trim target reached, take profits`);
+  else if(sig.name.includes('TRIM'))warnings.push(`Up ${pct.toFixed(1)}% — trim target reached, consider reducing`);
+  else if(sig.name.includes('ADD'))checks.push(`At add level — ${Math.abs(role.addPct*100).toFixed(0)}% pullback creates better cost basis`);
+  return{checks,warnings};
+}
+function getInvalidation(pos,tech,role){
+  const stopPrice=pos.buyPrice*(1+role.stopLoss);
+  if(tech?.ma50&&tech.ma50>stopPrice&&pos.currentPrice>tech.ma50){
+    return{price:tech.ma50,reason:'Break and close below 50-day MA'};
+  }
+  return{price:stopPrice,reason:`${Math.abs(role.stopLoss*100).toFixed(0)}% decline from entry — hard stop`};
+}
+
 // ─── BUY SCORE ENGINE ───────────────────────────────────────────────────────
 function calcBuyScore(tech,regime,circuitName){
   if(!tech)return null;
@@ -524,6 +585,8 @@ function DashboardTab(){
 
     <WeeklySummary/>
 
+    {(()=>{const total=Math.max(1,app.positionsValue);const g={};app.positions.forEach(p=>{if(!g[p.theme])g[p.theme]=0;g[p.theme]+=p.currentPrice*p.shares;});const alerts=Object.entries(g).filter(([,v])=>v/total>=0.6).map(([t,v])=>({theme:t,pct:Math.round(v/total*100)}));return alerts.length>0?<div className="card" style={{borderColor:'var(--orange)',background:'var(--orange-bg)'}}><div className="card-header"><span className="card-title">⚠️ Concentration Risk</span><span className="badge" style={{background:'var(--orange)',color:'#000',fontWeight:700}}>High</span></div><div className="divider"/>{alerts.map(a=><div key={a.theme}><div style={{fontSize:13,fontWeight:700,marginBottom:4}}>{a.theme} is {a.pct}% of your portfolio</div><div style={{fontSize:12,color:'var(--text2)'}}>Recommended max per theme: 60%. Consider diversifying into other sectors to reduce correlation risk.</div></div>)}</div>:null;})()}
+
     <MonthlyActionPlan/>
 
     <div className="card"><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><span style={{fontSize:12,fontWeight:700,color:'var(--text3)',textTransform:'uppercase'}}>Drawdown</span><span className="mono" style={{fontSize:18,fontWeight:800,color:app.circuitLevel.color}}>{fmtPct(app.drawdown)}</span></div><div className="progress-bar"><div className="progress-fill" style={{width:Math.min(100,Math.abs(app.drawdown)/Math.max(15,Math.ceil(Math.abs(app.drawdown)/5)*5)*100)+'%',background:'linear-gradient(90deg,var(--green),#eab308,var(--orange),var(--red))'}}/></div><div style={{display:'flex',justifyContent:'space-between',marginTop:4,fontSize:10,color:'var(--text3)'}}>{(()=>{const s=Math.max(15,Math.ceil(Math.abs(app.drawdown)/5)*5);return[0,Math.round(s/3),Math.round(2*s/3),s].map((v,i)=><span key={i}>{v===0?'0%':'-'+v+'%'}</span>);})()}</div></div>
@@ -632,27 +695,133 @@ function SignalsTab(){
 }
 
 function PositionDetail({pos,onBack}){
-  const app=useApp();const [showEdit,setShowEdit]=useState(false);const sig=getSignal(pos);const pct=getPnlPct(pos);const pnl=pos.currentPrice*pos.shares-pos.buyPrice*pos.shares;const role=ROLES[pos.role];const q=app.quotes[pos.ticker.toUpperCase()];const tech=app.technicals[pos.ticker.toUpperCase()];const score=calcBuyScore(tech,app.regime,app.circuitLevel.name);const sl=scoreLabel(score);
+  const app=useApp();
+  const [showEdit,setShowEdit]=useState(false);
+  const [showWhy,setShowWhy]=useState(false);
+  const sig=getSignal(pos);const pct=getPnlPct(pos);const pnl=pos.currentPrice*pos.shares-pos.buyPrice*pos.shares;
+  const role=ROLES[pos.role];const q=app.quotes[pos.ticker.toUpperCase()];
+  const tech=app.technicals[pos.ticker.toUpperCase()];
+  const score=calcBuyScore(tech,app.regime,app.circuitLevel.name);const sl=scoreLabel(score);
+  const rr=calcRR(pos,role);
+  const why=getWhySignal(pos,tech,app.regime,app.circuitLevel.name);
+  const inv=getInvalidation(pos,tech,role);
+  const isExit=sig.name.includes('STOP');const isTrimStrong=sig.name.includes('TRIM STRONG');const isTrim=sig.name.includes('TRIM')&&!isTrimStrong;const isAdd=sig.name.includes('ADD');
+
   return<div className="fade-in">
     <button onClick={onBack} style={{display:'flex',alignItems:'center',gap:4,background:'none',border:'none',color:'var(--blue)',fontSize:13,fontWeight:600,marginBottom:12,padding:0}}><Icon name="back" size={16} color="var(--blue)"/> Back</button>
-    <div className="card" style={{background:sig.color+'12',borderColor:sig.color+'33'}}><div style={{display:'flex',justifyContent:'space-between'}}><div><div style={{display:'flex',alignItems:'center',gap:8}}><span style={{fontSize:24,fontWeight:800}}>{pos.ticker}</span><RoleBadge role={pos.role}/></div><div style={{fontSize:13,color:'var(--text2)'}}>{pos.name}</div></div><div style={{display:'flex',gap:8}}><SignalBadge signal={sig}/><button className="refresh-btn" onClick={()=>setShowEdit(true)} style={{padding:'4px 8px'}}><Icon name="edit" size={14}/></button></div></div><div style={{marginTop:12}}><Sparkline data={app.sparklines[pos.ticker.toUpperCase()]} width={280} height={40}/></div>
-    {tech&&<div style={{display:'flex',gap:6,marginTop:10,flexWrap:'wrap'}}><RsiBadge rsi={tech.rsi}/><MaBadge pctFromMa50={tech.pctFromMa50}/>{tech.pctFromMa200!=null&&<span style={{fontSize:10,fontWeight:700,color:'var(--text2)',background:'var(--bg2)',borderRadius:4,padding:'2px 6px'}}>{tech.pctFromMa200>=0?'▲':'▼'} MA200 {tech.pctFromMa200>=0?'+':''}{tech.pctFromMa200}%</span>}{tech.volRatio!=null&&<span style={{fontSize:10,fontWeight:700,color:tech.volRatio>=1.5?'var(--green)':'var(--text3)',background:tech.volRatio>=1.5?'var(--green-bg)':'var(--bg2)',borderRadius:4,padding:'2px 6px'}}>Vol {tech.volRatio}×</span>}</div>}
+
+    {/* Header card */}
+    <div className="card" style={{background:sig.color+'12',borderColor:sig.color+'33'}}>
+      <div style={{display:'flex',justifyContent:'space-between'}}>
+        <div><div style={{display:'flex',alignItems:'center',gap:8}}><span style={{fontSize:24,fontWeight:800}}>{pos.ticker}</span><RoleBadge role={pos.role}/></div><div style={{fontSize:13,color:'var(--text2)'}}>{pos.name}</div></div>
+        <div style={{display:'flex',gap:8}}><SignalBadge signal={sig}/><button className="refresh-btn" onClick={()=>setShowEdit(true)} style={{padding:'4px 8px'}}><Icon name="edit" size={14}/></button></div>
+      </div>
+      <div style={{marginTop:12}}><Sparkline data={app.sparklines[pos.ticker.toUpperCase()]} width={280} height={40}/></div>
+      {tech&&<div style={{display:'flex',gap:6,marginTop:10,flexWrap:'wrap'}}><RsiBadge rsi={tech.rsi}/><MaBadge pctFromMa50={tech.pctFromMa50}/>{tech.pctFromMa200!=null&&<span style={{fontSize:10,fontWeight:700,color:'var(--text2)',background:'var(--bg2)',borderRadius:4,padding:'2px 6px'}}>{tech.pctFromMa200>=0?'▲':'▼'} MA200 {tech.pctFromMa200>=0?'+':''}{tech.pctFromMa200}%</span>}{tech.volRatio!=null&&<span style={{fontSize:10,fontWeight:700,color:tech.volRatio>=1.5?'var(--green)':'var(--text3)',background:tech.volRatio>=1.5?'var(--green-bg)':'var(--bg2)',borderRadius:4,padding:'2px 6px'}}>Vol {tech.volRatio}×</span>}</div>}
     </div>
+
     {q&&q.fiftyTwoWeekLow&&<div className="card"><RangeBar52 low={q.fiftyTwoWeekLow} high={q.fiftyTwoWeekHigh} current={pos.currentPrice}/></div>}
-    <div className="stats-grid"><div className="stat-card"><div className="stat-label">Buy</div><div className="stat-value mono" style={{fontSize:16}}>${pos.buyPrice.toFixed(2)}</div></div><div className="stat-card"><div className="stat-label">Current</div><div className="stat-value mono" style={{fontSize:16}}>${pos.currentPrice.toFixed(2)}</div></div><div className="stat-card"><div className="stat-label">Shares</div><div className="stat-value mono" style={{fontSize:16}}>{pos.shares}</div></div><div className="stat-card"><div className="stat-label">P&L</div><div className="stat-value mono" style={{fontSize:16,color:pnlColor(pnl)}}>{pnlSign(pnl)}{fmt$(pnl)}</div><div className="stat-sub">{pnlSign(pct)}{fmtPct(pct)}</div></div></div>
-    <div className="card"><div className="card-header"><span style={{fontSize:16,fontWeight:800}}>What to Do</span><SignalBadge signal={sig}/></div><div className="divider"/>
-    {sig.name.includes('STOP')?<div style={{background:'rgba(185,28,28,.12)',padding:12,borderRadius:8}}><div style={{fontWeight:800,color:'#f87171'}}>⚠️ EXIT NOW</div><div style={{background:'#b91c1c',color:'#fff',fontWeight:800,textAlign:'center',padding:10,borderRadius:8,marginTop:8}}>SELL ALL {pos.shares} SHARES</div></div>
-    :sig.name.includes('TRIM')?<div><div style={{background:sig.color+'15',padding:10,borderRadius:8,fontSize:14,fontWeight:600}}>Sell {sig.name.includes('STRONG')?'35%':'20%'} → {Math.max(1,Math.round(pos.shares*(sig.name.includes('STRONG')?.35:.20)))} shares</div></div>
-    :sig.name.includes('ADD')?<div><div style={{background:sig.color+'15',padding:10,borderRadius:8,fontSize:14,fontWeight:600}}>Buy ~${Math.round(app.portfolioTotal*role.addSize)} ({(role.addSize*100).toFixed(1)}%)</div></div>
-    :<div style={{color:'var(--text3)',fontSize:13}}>✅ No action required.</div>}
+    <div className="stats-grid">
+      <div className="stat-card"><div className="stat-label">Buy</div><div className="stat-value mono" style={{fontSize:16}}>${pos.buyPrice.toFixed(2)}</div></div>
+      <div className="stat-card"><div className="stat-label">Current</div><div className="stat-value mono" style={{fontSize:16}}>${pos.currentPrice.toFixed(2)}</div></div>
+      <div className="stat-card"><div className="stat-label">Shares</div><div className="stat-value mono" style={{fontSize:16}}>{pos.shares}</div></div>
+      <div className="stat-card"><div className="stat-label">P&L</div><div className="stat-value mono" style={{fontSize:16,color:pnlColor(pnl)}}>{pnlSign(pnl)}{fmt$(pnl)}</div><div className="stat-sub">{pnlSign(pct)}{fmtPct(pct)}</div></div>
     </div>
-    {tech&&score!==null&&<div className="card"><div className="card-header"><span className="card-title">🧠 Buy Score</span><span style={{fontSize:20,fontWeight:900,color:sl.color}}>{score}<span style={{fontSize:12,color:'var(--text3)'}}>/100</span></span></div><div className="divider"/>
+
+    {/* ── What to Do (softer language) ── */}
+    <div className="card">
+      <div className="card-header"><span style={{fontSize:16,fontWeight:800}}>Recommended Action</span><SignalBadge signal={sig}/></div>
+      <div className="divider"/>
+      {isExit&&<div>
+        <div style={{background:'rgba(185,28,28,.12)',borderRadius:8,padding:12,marginBottom:10}}>
+          <div style={{fontWeight:800,color:'#f87171',marginBottom:4}}>⚠️ Reduce Exposure — Stop-Loss Reached</div>
+          <div style={{fontSize:13,color:'var(--text2)',marginBottom:10}}>The position has breached your risk threshold. Prioritise protecting capital over holding for recovery.</div>
+          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            <div style={{background:'#b91c1c22',borderRadius:6,padding:'8px 12px',fontSize:13}}><span style={{fontWeight:700,color:'#f87171'}}>Option A — Full Exit:</span> Sell all {pos.shares} shares → raise cash, remove risk entirely</div>
+            <div style={{background:'var(--bg2)',borderRadius:6,padding:'8px 12px',fontSize:13}}><span style={{fontWeight:700,color:'var(--orange)'}}>Option B — Partial:</span> Sell 50% ({Math.round(pos.shares*.5)} shares) now, review in 5 days</div>
+          </div>
+        </div>
+        <div style={{fontSize:11,color:'var(--text3)'}}>⚠️ No system is perfect — use judgment. If fundamentals are intact and this is market-wide panic, Option B may apply.</div>
+      </div>}
+      {isTrimStrong&&<div>
+        <div style={{background:sig.color+'15',borderRadius:8,padding:12,marginBottom:8}}>
+          <div style={{fontWeight:700,color:'var(--red)',marginBottom:6}}>📈 Strong Trim Target Reached</div>
+          <div style={{fontSize:13,marginBottom:8}}>Lock in gains — reduce position by 35% to secure profits while keeping upside exposure.</div>
+          <div style={{fontWeight:700}}>Sell {Math.max(1,Math.round(pos.shares*.35))} shares → keep {pos.shares-Math.max(1,Math.round(pos.shares*.35))} shares running</div>
+        </div>
+        <div style={{fontSize:11,color:'var(--text3)'}}>Trim targets are not hard rules — if conviction remains high and regime supports it, consider 20% instead.</div>
+      </div>}
+      {isTrim&&<div>
+        <div style={{background:sig.color+'15',borderRadius:8,padding:12,marginBottom:8}}>
+          <div style={{fontWeight:700,color:'var(--orange)',marginBottom:6}}>📊 Trim Target Reached</div>
+          <div style={{fontSize:13,marginBottom:8}}>Consider taking partial profits — sell 20% to reduce risk while staying in the position.</div>
+          <div style={{fontWeight:700}}>Sell {Math.max(1,Math.round(pos.shares*.20))} shares → keep {pos.shares-Math.max(1,Math.round(pos.shares*.20))} shares running</div>
+        </div>
+        <div style={{fontSize:11,color:'var(--text3)'}}>In a strong Risk-On regime you may hold and reassess at the next trigger level.</div>
+      </div>}
+      {isAdd&&<div>
+        <div style={{background:sig.color+'15',borderRadius:8,padding:12,marginBottom:8}}>
+          <div style={{fontWeight:700,color:'var(--green)',marginBottom:6}}>🟢 Add Opportunity</div>
+          <div style={{fontSize:13,marginBottom:10}}>Price has pulled back to your planned add level — this improves your average cost basis.</div>
+          <div style={{display:'flex',gap:8}}>
+            {[{l:'Conservative',p:Math.round(app.portfolioTotal*.02)},{l:'Balanced',p:Math.round(app.portfolioTotal*.05)},{l:'Aggressive',p:Math.round(app.portfolioTotal*.08)}].map(o=><div key={o.l} style={{flex:1,background:'var(--bg2)',borderRadius:6,padding:'6px 8px',textAlign:'center'}}><div style={{fontSize:9,color:'var(--text3)',fontWeight:700}}>{o.l.toUpperCase()}</div><div style={{fontWeight:800,fontSize:13,color:'var(--green)'}}>${o.p.toLocaleString()}</div><div style={{fontSize:9,color:'var(--text3)'}}>~{Math.floor(o.p/pos.currentPrice)} sh</div></div>)}
+          </div>
+        </div>
+        <div style={{fontSize:11,color:'var(--text3)'}}>Only add if circuit breaker = Normal and regime = Risk-On. Never add to a falling position against the trend.</div>
+      </div>}
+      {!isExit&&!isTrim&&!isTrimStrong&&!isAdd&&<div style={{color:'var(--text3)',fontSize:13}}>✅ No action required. Hold and monitor your triggers below.</div>}
+    </div>
+
+    {/* ── R:R + Position Size ── */}
+    {rr!==null&&<div className="card">
+      <div className="card-header"><span className="card-title">⚖️ Risk / Reward</span>
+        <span style={{fontSize:18,fontWeight:900,color:rr>=2?'var(--green)':rr>=1.5?'#eab308':'var(--red)'}}>{rr}:1</span>
+      </div>
+      <div className="divider"/>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}>
+        <div style={{background:'var(--green-bg)',borderRadius:6,padding:'8px 10px'}}><div style={{fontSize:10,color:'var(--text3)',fontWeight:700}}>UPSIDE TARGET</div><div style={{fontWeight:800,color:'var(--green)'}}>${(pos.buyPrice*(1+role.trimPct)).toFixed(2)}</div><div style={{fontSize:11,color:'var(--text3)'}}>+{(role.trimPct*100).toFixed(0)}% from entry</div></div>
+        <div style={{background:'var(--red-bg)',borderRadius:6,padding:'8px 10px'}}><div style={{fontSize:10,color:'var(--text3)',fontWeight:700}}>DOWNSIDE RISK</div><div style={{fontWeight:800,color:'var(--red)'}}>${(pos.buyPrice*(1+role.stopLoss)).toFixed(2)}</div><div style={{fontSize:11,color:'var(--text3)'}}>{(role.stopLoss*100).toFixed(0)}% from entry</div></div>
+      </div>
+      {rr<1.5&&<div style={{background:'var(--red-bg)',borderRadius:6,padding:'8px 10px',fontSize:12,color:'var(--red)',fontWeight:600}}>⚠️ R:R below 1.5 — unfavourable. Wait for a better entry point or skip this trade.</div>}
+      {rr>=1.5&&rr<2&&<div style={{background:'#eab30815',borderRadius:6,padding:'8px 10px',fontSize:12,color:'#eab308',fontWeight:600}}>R:R is acceptable but not ideal. Reduce size or wait for a pullback closer to support.</div>}
+      {rr>=2&&<div style={{background:'var(--green-bg)',borderRadius:6,padding:'8px 10px',fontSize:12,color:'var(--green)',fontWeight:600}}>✅ Solid R:R ratio — setup has a favourable probability-weighted outcome.</div>}
+    </div>}
+
+    {/* ── Buy Score ── */}
+    {tech&&score!==null&&<div className="card">
+      <div className="card-header"><span className="card-title">🧠 Buy Score</span><span style={{fontSize:20,fontWeight:900,color:sl.color}}>{score}<span style={{fontSize:12,color:'var(--text3)'}}>/100</span></span></div>
+      <div className="divider"/>
       <div style={{background:sl.bg,borderRadius:8,padding:'8px 12px',marginBottom:10,display:'flex',justifyContent:'space-between',alignItems:'center'}}><span style={{fontWeight:800,color:sl.color,fontSize:14}}>{sl.label}</span>{score>=75&&<span style={{fontSize:12}}>✅ All systems aligned</span>}{score>=55&&score<75&&<span style={{fontSize:12}}>⚡ Good setup, confirm regime</span>}{score<55&&<span style={{fontSize:12}}>⏸️ Wait for better setup</span>}</div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
         {[{label:'RSI',value:tech.rsi,detail:tech.rsi<30?'Oversold':tech.rsi<50?'Weak':tech.rsi<65?'Bullish':tech.rsi<=70?'Hot':'Overbought'},{label:'vs MA50',value:(tech.pctFromMa50>=0?'+':'')+tech.pctFromMa50+'%',detail:tech.pctFromMa50>=-2&&tech.pctFromMa50<=3?'Ideal zone':tech.pctFromMa50<-10?'Extended low':'Normal'},{label:'Regime',value:app.regime,detail:app.regime==='Risk-On'?'Max points':'Reduced'},{label:'Circuit',value:app.circuitLevel.name,detail:app.circuitLevel.name==='Normal'?'Clear':'Caution'}].map((row,i)=><div key={i} style={{background:'var(--bg2)',borderRadius:6,padding:'6px 10px'}}><div style={{fontSize:10,color:'var(--text3)',fontWeight:600}}>{row.label}</div><div style={{fontWeight:800,fontSize:13}}>{row.value}</div><div style={{fontSize:10,color:'var(--text3)'}}>{row.detail}</div></div>)}
       </div>
     </div>}
-    <div className="card"><div className="card-title" style={{marginBottom:10}}>🎯 Price Triggers</div><div className="divider"/>{[{l:'Add',p:pos.buyPrice*(1+role.addPct),c:'var(--green)',below:true},{l:'Trim 20%',p:pos.buyPrice*(1+role.trimPct),c:'var(--orange)',below:false},{l:'Trim 15%',p:pos.buyPrice*(1+role.trimPct+.10),c:'var(--red)',below:false},{l:'Stop EXIT',p:pos.buyPrice*(1+role.stopLoss),c:'#b91c1c',below:true}].map((t,i)=>{const hit=t.below?(pos.currentPrice<=t.p):(pos.currentPrice>=t.p);return<div key={i} style={{display:'flex',alignItems:'center',padding:'6px 0',gap:8}}><span style={{width:8,height:8,borderRadius:'50%',background:t.c}}/><span style={{fontSize:13,flex:1}}>{t.l}</span><span className="mono" style={{fontSize:13,fontWeight:700,color:t.c}}>${t.p.toFixed(2)}</span>{hit&&<span className="badge" style={{background:t.c,color:'#fff',fontSize:9}}>NOW</span>}</div>;})}</div>
+
+    {/* ── Why This Signal? ── */}
+    <div className="card">
+      <div className="card-header" style={{cursor:'pointer'}} onClick={()=>setShowWhy(w=>!w)}>
+        <span className="card-title">🔍 Why This Signal?</span>
+        <span style={{fontSize:12,color:'var(--text3)'}}>{showWhy?'▲ Hide':'▼ Show'}</span>
+      </div>
+      {showWhy&&<><div className="divider"/>
+        {why.checks.map((c,i)=><div key={i} style={{display:'flex',gap:8,alignItems:'flex-start',padding:'4px 0'}}><span style={{color:'var(--green)',fontSize:13,minWidth:16}}>✅</span><span style={{fontSize:13}}>{c}</span></div>)}
+        {why.warnings.map((w,i)=><div key={i} style={{display:'flex',gap:8,alignItems:'flex-start',padding:'4px 0'}}><span style={{color:'var(--orange)',fontSize:13,minWidth:16}}>⚠️</span><span style={{fontSize:13}}>{w}</span></div>)}
+        <div style={{marginTop:8,fontSize:11,color:'var(--text3)',fontStyle:'italic'}}>These factors combine to produce the signal. No single factor is a guarantee — always consider the full picture.</div>
+      </>}
+    </div>
+
+    {/* ── Price Triggers + Invalidation ── */}
+    <div className="card">
+      <div className="card-title" style={{marginBottom:10}}>🎯 Price Triggers</div>
+      <div className="divider"/>
+      {[{l:'Add',p:pos.buyPrice*(1+role.addPct),c:'var(--green)',below:true},{l:'Trim 20%',p:pos.buyPrice*(1+role.trimPct),c:'var(--orange)',below:false},{l:'Trim 15%',p:pos.buyPrice*(1+role.trimPct+.10),c:'var(--red)',below:false},{l:'Stop EXIT',p:pos.buyPrice*(1+role.stopLoss),c:'#b91c1c',below:true}].map((t,i)=>{const hit=t.below?(pos.currentPrice<=t.p):(pos.currentPrice>=t.p);return<div key={i} style={{display:'flex',alignItems:'center',padding:'6px 0',borderBottom:'1px solid var(--border)',gap:8}}><span style={{width:8,height:8,borderRadius:'50%',background:t.c,minWidth:8}}/><span style={{fontSize:13,flex:1}}>{t.l}</span><span className="mono" style={{fontSize:13,fontWeight:700,color:t.c}}>${t.p.toFixed(2)}</span>{hit&&<span className="badge" style={{background:t.c,color:'#fff',fontSize:9}}>NOW</span>}</div>;})}
+      <div style={{marginTop:10,background:'var(--red-bg)',borderRadius:8,padding:'8px 12px'}}>
+        <div style={{fontSize:10,fontWeight:700,color:'var(--text3)',marginBottom:4}}>🚫 THESIS INVALIDATED IF</div>
+        <div style={{fontSize:13,fontWeight:700,color:'var(--red)'}}>{pos.ticker} closes below ${inv.price.toFixed(2)}</div>
+        <div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>{inv.reason}</div>
+      </div>
+    </div>
+
     {showEdit&&<PositionModal position={pos} onClose={()=>setShowEdit(false)}/>}
   </div>;
 }
