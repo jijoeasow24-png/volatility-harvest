@@ -479,6 +479,90 @@ function MaBadge({pctFromMa50}){
   return<span style={{fontSize:10,fontWeight:700,color,background:above?'var(--green-bg)':'#f9731620',borderRadius:4,padding:'2px 6px'}}>{above?'▲':'▼'} MA50 {above?'+':''}{pctFromMa50}%</span>;
 }
 
+// ─── NO QUALITY SETUPS SIGNAL ────────────────────────────────────────────────
+function NoQualitySetups(){
+  const app=useApp();
+  const hasQuality=app.positions.some(p=>{
+    const sig=getSignal(p);
+    const tech=app.technicals[p.ticker.toUpperCase()];
+    const score=calcBuyScore(tech,app.regime,app.circuitLevel.name);
+    return sig.name.includes('ADD')&&(score||0)>=55&&app.circuitLevel.name==='Normal';
+  });
+  const conditionsPoor=app.circuitLevel.name!=='Normal'||['Risk-Off','Recession Scare'].includes(app.regime);
+  if(!conditionsPoor||hasQuality)return null;
+  const reasons=[];
+  if(app.circuitLevel.name!=='Normal')reasons.push({icon:'🛡️',text:`Circuit breaker at ${app.circuitLevel.name} — risk appetite reduced`});
+  if(['Risk-Off','Recession Scare'].includes(app.regime))reasons.push({icon:'🌡️',text:`Regime = ${app.regime} — defensive posture only`});
+  return<div className="card" style={{borderColor:'var(--text3)',borderWidth:1}}>
+    <div className="card-header">
+      <span className="card-title">🛑 No Quality Setups Right Now</span>
+      <span className="badge" style={{background:'var(--bg3)',color:'var(--text2)',fontWeight:700}}>WAIT</span>
+    </div>
+    <div className="divider"/>
+    <div style={{fontSize:13,color:'var(--text2)',marginBottom:12}}>Current conditions do not favour new entries. The highest-probability action is patience — not more trades.</div>
+    {reasons.map((r,i)=><div key={i} style={{display:'flex',gap:8,marginBottom:6,fontSize:12}}><span>{r.icon}</span><span style={{color:'var(--text2)'}}>{r.text}</span></div>)}
+    <div style={{background:'var(--bg2)',borderRadius:8,padding:'10px 12px',marginTop:8,borderLeft:'3px solid var(--text3)'}}>
+      <div style={{fontSize:12,fontWeight:800,marginBottom:2}}>Best action: Do nothing.</div>
+      <div style={{fontSize:12,color:'var(--text3)'}}>Sit in cash. Protect capital. The market will offer better setups when conditions improve. Professionals wait.</div>
+    </div>
+  </div>;
+}
+
+// ─── BEHAVIORAL PROTECTION LAYER ─────────────────────────────────────────────
+function BehavioralAlerts(){
+  const app=useApp();
+  const alerts=[];
+
+  // 1. Averaging into weakness — position down >10% but showing ADD signal
+  app.positions.forEach(p=>{
+    const pct=getPnlPct(p);const sig=getSignal(p);
+    if(pct<=-10&&sig.name.includes('ADD')){
+      alerts.push({level:'danger',icon:'📉',title:`Averaging into weakness — ${p.ticker}`,desc:`${p.ticker} is down ${Math.abs(pct).toFixed(1)}% yet shows an ADD signal. Adding here means buying a losing position. Confirm the original thesis is still intact before acting — this is one of the most common ways investors amplify losses.`});
+    }
+  });
+
+  // 2. High correlation — 3+ positions in same theme
+  const themeCount={};
+  app.positions.forEach(p=>{themeCount[p.theme]=(themeCount[p.theme]||0)+1;});
+  Object.entries(themeCount).forEach(([theme,count])=>{
+    if(count>=3)alerts.push({level:'warning',icon:'🔗',title:`High correlation — ${count} ${theme} positions`,desc:`You hold ${count} positions in ${theme}. Correlated assets tend to fall together in downturns. A single sector event could hit all of them simultaneously. Consider trimming one to reduce cluster risk.`});
+  });
+
+  // 3. Regime-circuit mismatch — regime says buy but circuit says caution
+  if(['Risk-On','Inflation Spike'].includes(app.regime)&&app.circuitLevel.name!=='Normal'){
+    alerts.push({level:'warning',icon:'⚡',title:'Regime-circuit conflict',desc:`Regime = ${app.regime} (deploy capital) but circuit breaker = ${app.circuitLevel.name} (reduce risk). The circuit breaker always overrides the regime. Do not deploy new capital until the circuit resets to Normal.`});
+  }
+
+  // 4. Multiple positions deep in loss — 3+ positions down >8%
+  const deepLosers=app.positions.filter(p=>getPnlPct(p)<=-8);
+  if(deepLosers.length>=3){
+    alerts.push({level:'danger',icon:'🚨',title:`${deepLosers.length} positions down 8%+ simultaneously`,desc:`${deepLosers.map(p=>p.ticker).join(', ')} are all deeply negative. Simultaneous losses across multiple positions usually signal a market-wide move, not stock-specific issues. Do not add to any of these. Review the regime and circuit breaker.`});
+  }
+
+  // 5. All positions in loss
+  const allLosing=app.positions.length>=2&&app.positions.every(p=>getPnlPct(p)<0);
+  if(allLosing){
+    alerts.push({level:'danger',icon:'🔴',title:'Every position is currently at a loss',desc:'When the entire portfolio is red, it is almost always a macro event, not stock-picking failure. Do not panic-sell everything. Do not add new positions. Review circuit breaker level and wait for clarity.'});
+  }
+
+  if(alerts.length===0)return null;
+  const borderColor=a=>a.level==='danger'?'var(--red)':a.level==='warning'?'var(--orange)':'var(--blue)';
+  const bgColor=a=>a.level==='danger'?'var(--red-bg)':a.level==='warning'?'var(--orange-bg)':'var(--blue-bg)';
+
+  return<div className="card">
+    <div className="card-header">
+      <span className="card-title">🧠 Behavioral Alerts</span>
+      <span className="badge" style={{background:alerts.some(a=>a.level==='danger')?'var(--red)':'var(--orange)',color:'#fff',fontWeight:700}}>{alerts.length}</span>
+    </div>
+    <div className="divider"/>
+    {alerts.map((a,i)=><div key={i} style={{background:bgColor(a),borderRadius:8,padding:'10px 12px',marginBottom:i<alerts.length-1?8:0,borderLeft:`3px solid ${borderColor(a)}`}}>
+      <div style={{fontWeight:700,fontSize:13,marginBottom:4}}>{a.icon} {a.title}</div>
+      <div style={{fontSize:12,color:'var(--text2)',lineHeight:1.5}}>{a.desc}</div>
+    </div>)}
+    <div style={{marginTop:10,fontSize:11,color:'var(--text3)',textAlign:'center'}}>These alerts protect against common behavioural patterns that lead to losses — not indicators, not predictions.</div>
+  </div>;
+}
+
 // ─── WEEKLY SUMMARY ─────────────────────────────────────────────────────────
 function WeeklySummary(){
   const app=useApp();
@@ -584,6 +668,8 @@ function DashboardTab(){
     </div>
 
     <WeeklySummary/>
+    <NoQualitySetups/>
+    <BehavioralAlerts/>
 
     {(()=>{const total=Math.max(1,app.positionsValue);const g={};app.positions.forEach(p=>{if(!g[p.theme])g[p.theme]=0;g[p.theme]+=p.currentPrice*p.shares;});const alerts=Object.entries(g).filter(([,v])=>v/total>=0.6).map(([t,v])=>({theme:t,pct:Math.round(v/total*100)}));return alerts.length>0?<div className="card" style={{borderColor:'var(--orange)',background:'var(--orange-bg)'}}><div className="card-header"><span className="card-title">⚠️ Concentration Risk</span><span className="badge" style={{background:'var(--orange)',color:'#000',fontWeight:700}}>High</span></div><div className="divider"/>{alerts.map(a=><div key={a.theme}><div style={{fontSize:13,fontWeight:700,marginBottom:4}}>{a.theme} is {a.pct}% of your portfolio</div><div style={{fontSize:12,color:'var(--text2)'}}>Recommended max per theme: 60%. Consider diversifying into other sectors to reduce correlation risk.</div></div>)}</div>:null;})()}
 
