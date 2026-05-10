@@ -998,8 +998,11 @@ function FeedbackModal({onClose}){
     }catch(e){setErrMsg(e.message);setStatus('error');}
   };
 
-  return<div style={{position:'fixed',inset:0,zIndex:500,background:'rgba(0,0,0,.6)',display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-    <div style={{background:'var(--bg1)',borderRadius:'20px 20px 0 0',padding:24,width:'100%',maxWidth:480,maxHeight:'90vh',overflowY:'auto'}}>
+  return<div style={{position:'fixed',inset:0,zIndex:500,background:'rgba(0,0,0,.75)',display:'flex',alignItems:'flex-end',justifyContent:'center',backdropFilter:'blur(2px)'}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+    <div style={{background:'var(--bg1)',borderRadius:'20px 20px 0 0',width:'100%',maxWidth:480,maxHeight:'92vh',overflowY:'auto',boxShadow:'0 -8px 40px rgba(0,0,0,.5)'}}>
+      {/* Drag handle */}
+      <div style={{display:'flex',justifyContent:'center',padding:'12px 0 4px'}}><div style={{width:36,height:4,borderRadius:2,background:'var(--border)'}}/></div>
+      <div style={{padding:'8px 24px 32px'}}>
       {status==='done'?<div style={{textAlign:'center',padding:'32px 0'}}>
         <div style={{fontSize:48,marginBottom:12}}>🎉</div>
         <div style={{fontSize:18,fontWeight:800,marginBottom:6}}>Thanks for the feedback!</div>
@@ -1014,8 +1017,9 @@ function FeedbackModal({onClose}){
         <div style={{marginBottom:16}}>
           <div style={{fontSize:11,fontWeight:700,color:'var(--text3)',marginBottom:8,textTransform:'uppercase'}}>Rate the app</div>
           <div style={{display:'flex',gap:8}}>
-            {[1,2,3,4,5].map(s=><button key={s} onClick={()=>setRating(s)} onMouseEnter={()=>setHover(s)} onMouseLeave={()=>setHover(0)} style={{background:'none',border:'none',fontSize:28,cursor:'pointer',transition:'transform .15s',transform:(hover||rating)>=s?'scale(1.2)':'scale(1)',filter:(hover||rating)>=s?'none':'grayscale(1) opacity(.4)'}}>⭐</button>)}
+            {[1,2,3,4,5].map(s=><button key={s} onClick={()=>setRating(s)} onMouseEnter={()=>setHover(s)} onMouseLeave={()=>setHover(0)} style={{background:'none',border:'none',fontSize:28,cursor:'pointer',transition:'transform .15s',transform:(hover>0?hover:rating)>=s?'scale(1.2)':'scale(1)',filter:(hover>0?hover:rating)>=s?'none':'grayscale(1) opacity(.35)'}}>⭐</button>)}
           </div>
+          {rating>0&&<div style={{fontSize:12,color:'var(--text3)',marginTop:6}}>{['','Poor','Fair','Good','Great','Excellent!'][rating]}</div>}
         </div>
         {/* Name */}
         <div style={{marginBottom:12}}>
@@ -1032,6 +1036,7 @@ function FeedbackModal({onClose}){
           {status==='sending'?<><Spinner/> Sending…</>:'Send Feedback →'}
         </button>
       </>}
+      </div>
     </div>
   </div>;
 }
