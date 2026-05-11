@@ -93,7 +93,7 @@ const CIRCUIT_LEVELS=[{name:'Normal',thresh:'0% to -4.9%',color:'var(--green)',a
 const ROLES={Core:{color:'var(--blue)',addPct:-0.07,trimPct:0.15,addSize:0.015,stopLoss:-0.20},Satellite:{color:'var(--purple)',addPct:-0.12,trimPct:0.20,addSize:0.005,stopLoss:-0.20},Hedge:{color:'var(--orange)',addPct:0,trimPct:0.12,addSize:0.01,stopLoss:-0.20}};
 const DO_NOTHING=['Market down <3% (need 5%+)','No trigger firing','VIX 20–30 without direction','2+ unplanned trades this month','<4 weeks since last add','Scary headline but move <5%','Cash buffer below 5%'];
 const THEMES=['All','Technology','Healthcare','Commodities','Broad Market','Diversifiers','Hedges'];
-const SEED=[{id:1,ticker:'AAPL',name:'Apple Inc.',role:'Core',theme:'Technology',buyPrice:185.00,currentPrice:195.00,shares:10},{id:2,ticker:'MSFT',name:'Microsoft Corporation',role:'Core',theme:'Technology',buyPrice:380.00,currentPrice:415.00,shares:5},{id:3,ticker:'NVDA',name:'NVIDIA Corporation',role:'Satellite',theme:'Technology',buyPrice:500.00,currentPrice:115.00,shares:8},{id:4,ticker:'QQQ',name:'Invesco QQQ Trust',role:'Core',theme:'Broad Market',buyPrice:440.00,currentPrice:480.00,shares:12},{id:5,ticker:'GLD',name:'SPDR Gold Trust',role:'Core',theme:'Commodities',buyPrice:185.00,currentPrice:210.00,shares:6}];
+const SEED=[{id:1,ticker:'AAPL',name:'Apple Inc.',role:'Core',theme:'Technology',buyPrice:178.00,currentPrice:205.50,shares:10},{id:2,ticker:'MSFT',name:'Microsoft Corporation',role:'Core',theme:'Technology',buyPrice:385.00,currentPrice:412.00,shares:5},{id:3,ticker:'NVDA',name:'NVIDIA Corporation',role:'Satellite',theme:'Technology',buyPrice:900.00,currentPrice:792.00,shares:4},{id:4,ticker:'QQQ',name:'Invesco QQQ Trust',role:'Core',theme:'Broad Market',buyPrice:430.00,currentPrice:460.00,shares:8},{id:5,ticker:'GLD',name:'SPDR Gold Trust',role:'Core',theme:'Commodities',buyPrice:225.00,currentPrice:208.00,shares:6}];
 const WATCHLIST=[{ticker:'SPY',name:'S&P 500 ETF',theme:'Broad Market',role:'Core',addTrigger:'Down 5–7%',trimTrigger:'Up 12%',stopLoss:'Down 20%',notes:'Core anchor'},{ticker:'QQQ',name:'Nasdaq-100',theme:'Broad Market',role:'Core',addTrigger:'Down 7%',trimTrigger:'Up 15%',stopLoss:'Down 20%',notes:'Core tech'},{ticker:'MSFT',name:'Microsoft',theme:'Technology',role:'Core',addTrigger:'Down 8–10%',trimTrigger:'Up 18%',stopLoss:'Down 20%',notes:'AI/Cloud'},{ticker:'NVDA',name:'NVIDIA',theme:'Technology',role:'Satellite',addTrigger:'Down 12–15%',trimTrigger:'Up 20%',stopLoss:'Down 20%',notes:'AI/Semis'},{ticker:'AAPL',name:'Apple',theme:'Technology',role:'Core',addTrigger:'Down 8%',trimTrigger:'Up 15%',stopLoss:'Down 20%',notes:'Consumer tech'},{ticker:'AMZN',name:'Amazon',theme:'Technology',role:'Core',addTrigger:'Down 8%',trimTrigger:'Up 15%',stopLoss:'Down 20%',notes:'Cloud/eCommerce'},{ticker:'GOOG',name:'Alphabet',theme:'Technology',role:'Core',addTrigger:'Down 8%',trimTrigger:'Up 15%',stopLoss:'Down 20%',notes:'AI/Ads'},{ticker:'META',name:'Meta',theme:'Technology',role:'Satellite',addTrigger:'Down 10%',trimTrigger:'Up 18%',stopLoss:'Down 20%',notes:'Social/AI'},{ticker:'SMH',name:'Semiconductor ETF',theme:'Technology',role:'Satellite',addTrigger:'Down 10%',trimTrigger:'Up 18%',stopLoss:'Down 22%',notes:'Semis'},{ticker:'XLV',name:'Healthcare ETF',theme:'Healthcare',role:'Core',addTrigger:'Down 5%',trimTrigger:'Up 12%',stopLoss:'Down 20%',notes:'Core healthcare'},{ticker:'LLY',name:'Eli Lilly',theme:'Healthcare',role:'Satellite',addTrigger:'Down 10%',trimTrigger:'Up 20%',stopLoss:'Down 20%',notes:'GLP-1'},{ticker:'GLD',name:'Gold ETF',theme:'Commodities',role:'Core',addTrigger:'Down 5%',trimTrigger:'Up 12%',stopLoss:'Down 20%',notes:'Safe haven'},{ticker:'XLE',name:'Energy ETF',theme:'Commodities',role:'Core',addTrigger:'Down 7%',trimTrigger:'Up 15%',stopLoss:'Down 20%',notes:'Core energy'},{ticker:'COPX',name:'Copper Miners',theme:'Commodities',role:'Satellite',addTrigger:'Down 10%',trimTrigger:'Up 18%',stopLoss:'Down 22%',notes:'Industrial metals'},{ticker:'SH',name:'Short S&P 500',theme:'Hedges',role:'Hedge',addTrigger:'SPY<200MA+dd>-10%',trimTrigger:'When resolved',stopLoss:'Max 30 days',notes:'1x inverse'}];
 function getDeployPlan(regime,budget){const b=Math.round(budget||2000);const f=v=>'$'+v.toLocaleString();const plans={'Risk-On':[{label:'Primary',amount:f(Math.round(b*.6)),target:'QQQ or SPY (core ETF)'},{label:'Secondary',amount:f(Math.round(b*.4)),target:'Best active satellite (NVDA/SMH/XBI)'}],'Risk-Off':[{label:'Primary',amount:f(Math.round(b*.7)),target:'GLD + XLV (split 60/40)'},{label:'Cash',amount:f(Math.round(b*.3)),target:'Add to cash buffer'}],'Inflation Spike':[{label:'Primary',amount:f(Math.round(b*.6)),target:'XLE + COPX (split 60/40)'},{label:'Secondary',amount:f(Math.round(b*.4)),target:'GLD top-up'}],'Recession Scare':[{label:'Cash',amount:f(Math.round(b*.5)),target:'Add to cash buffer'},{label:'Defensive',amount:f(Math.round(b*.3)),target:'XLV (healthcare)'},{label:'Safe Haven',amount:f(Math.round(b*.2)),target:'GLD'}],'Oil Shock':[{label:'Energy',amount:f(Math.round(b*.6)),target:'XLE / USO — ONLY after dip'},{label:'Core',amount:f(Math.round(b*.4)),target:'SPY'}],'Not Assessed':[{label:'',amount:f(b),target:'Complete regime check first'}]};return plans[regime]||plans['Not Assessed'];}
 const ECON_CAL=[{date:'2026-03-31',title:'PCE Price Index',cat:'economic',impact:'high'},{date:'2026-04-03',title:'Non-Farm Payrolls',cat:'economic',impact:'high'},{date:'2026-04-09',title:'CPI Inflation',cat:'economic',impact:'high'},{date:'2026-04-14',title:'Earnings Season',cat:'earnings',impact:'high'},{date:'2026-04-22',title:'GOOGL Earnings',cat:'earnings',impact:'high'},{date:'2026-04-28',title:'FOMC Day 1',cat:'fed',impact:'high'},{date:'2026-04-29',title:'FOMC Decision+GDP',cat:'fed',impact:'high'},{date:'2026-04-30',title:'MSFT Earnings',cat:'earnings',impact:'high'},{date:'2026-05-06',title:'NVDA Earnings',cat:'earnings',impact:'high'},{date:'2026-05-13',title:'CPI (Apr)',cat:'economic',impact:'high'}];
@@ -144,7 +144,7 @@ function RangeBar52({low,high,current}){if(!low||!high||!current)return null;con
 
 // ─── APP CONTEXT ────────────────────────────────────────────────────────────
 const AppContext=createContext();
-function AppProvider({children}){
+function AppProvider({children,demoMode=false}){
   const [theme,setTheme]=useState(()=>localStorage.getItem('vh_theme')||'dark');
   const [positions,setPositions]=useState([]);const [portfolioPeak,setPeak]=useState(22249.92);
   const [regime,setRegime]=useState('Not Assessed');
@@ -162,7 +162,7 @@ function AppProvider({children}){
   useEffect(()=>{document.documentElement.setAttribute('data-theme',theme);localStorage.setItem('vh_theme',theme);},[theme]);
   const toggleTheme=()=>setTheme(t=>t==='dark'?'light':'dark');
 
-  useEffect(()=>{try{const s=JSON.parse(localStorage.getItem('vh_state_v5')||'null');if(s){setPositions(s.positions||SEED);setPeak(s.portfolioPeak||23557.35);setRegime(s.regime||'Not Assessed');if(s.regimeAnswers)setRegimeAnswers(s.regimeAnswers);if(s.lastRegimeCheck)setLastRegimeCheck(new Date(s.lastRegimeCheck));if(s.monthlyHistory)setMonthlyHistory(s.monthlyHistory);if(s.actionChecks)setActionChecks(s.actionChecks);}else{setPositions(SEED);}}catch(e){setPositions(SEED);}initialized.current=true;},[]);
+  useEffect(()=>{if(demoMode){setPositions(SEED);initialized.current=true;return;}try{const s=JSON.parse(localStorage.getItem('vh_state_v5')||'null');if(s){setPositions(s.positions||SEED);setPeak(s.portfolioPeak||23557.35);setRegime(s.regime||'Not Assessed');if(s.regimeAnswers)setRegimeAnswers(s.regimeAnswers);if(s.lastRegimeCheck)setLastRegimeCheck(new Date(s.lastRegimeCheck));if(s.monthlyHistory)setMonthlyHistory(s.monthlyHistory);if(s.actionChecks)setActionChecks(s.actionChecks);}else{setPositions(SEED);}}catch(e){setPositions(SEED);}initialized.current=true;},[]);
 
   const positionsValue=positions.reduce((s,p)=>s+p.currentPrice*p.shares,0);
   const positionsCost=positions.reduce((s,p)=>s+p.buyPrice*p.shares,0);
@@ -174,7 +174,7 @@ function AppProvider({children}){
   const circuitLevel=getCircuitLevel(drawdown);
   const actionableSignals=positions.filter(p=>getSignal(p).name!=='HOLD').sort((a,b)=>Math.abs(getPnlPct(b))-Math.abs(getPnlPct(a)));
 
-  useEffect(()=>{if(!initialized.current)return;localStorage.setItem('vh_state_v5',JSON.stringify({positions,portfolioPeak,regime,regimeAnswers,lastRegimeCheck,monthlyHistory,actionChecks}));},[positions,portfolioPeak,regime,regimeAnswers,lastRegimeCheck,monthlyHistory,actionChecks]);
+  useEffect(()=>{if(!initialized.current||demoMode)return;localStorage.setItem('vh_state_v5',JSON.stringify({positions,portfolioPeak,regime,regimeAnswers,lastRegimeCheck,monthlyHistory,actionChecks}));},[positions,portfolioPeak,regime,regimeAnswers,lastRegimeCheck,monthlyHistory,actionChecks]);
 
   // ── AUTO-REGIME FETCH ──
   const fetchAutoRegime = useCallback(async()=>{
@@ -221,7 +221,7 @@ function AppProvider({children}){
   const toggleActionCheck=(key)=>setActionChecks(prev=>({...prev,[key]:!prev[key]}));
   const updateBudget=(v)=>{setMonthlyBudget(v);localStorage.setItem('vh_monthly_budget',v.toString());};
 
-  return<AppContext.Provider value={{theme,toggleTheme,positions,setPositions,portfolioPeak,setPeak,portfolioTotal,regime,setRegime,regimeAnswers,setRegimeAnswers,lastRegimeCheck,setLastRegimeCheck,autoRegimeData,autoRegimeLoading,fetchAutoRegime,quotes,sparklines,technicals,isRefreshing,lastRefresh,refreshError,refreshPrices,positionsValue,positionsCost,totalPnL,totalPnLPct,drawdown,circuitLevel,actionableSignals,addPosition,updatePosition,deletePosition,resetPositions,monthlyHistory,actionChecks,toggleActionCheck,notification,setNotification,monthlyBudget,updateBudget}}>{children}</AppContext.Provider>;
+  return<AppContext.Provider value={{theme,toggleTheme,positions,setPositions,portfolioPeak,setPeak,portfolioTotal,regime,setRegime,regimeAnswers,setRegimeAnswers,lastRegimeCheck,setLastRegimeCheck,autoRegimeData,autoRegimeLoading,fetchAutoRegime,quotes,sparklines,technicals,isRefreshing,lastRefresh,refreshError,refreshPrices,positionsValue,positionsCost,totalPnL,totalPnLPct,drawdown,circuitLevel,actionableSignals,addPosition,updatePosition,deletePosition,resetPositions,monthlyHistory,actionChecks,toggleActionCheck,notification,setNotification,monthlyBudget,updateBudget,demoMode}}>{children}</AppContext.Provider>;
 }
 const useApp=()=>useContext(AppContext);
 
@@ -1304,9 +1304,89 @@ function FeedbackModal({onClose}){
   </div>;
 }
 
-function App(){const [tab,setTab]=useState('dashboard');const [onboarded,setOnboarded]=useState(()=>!!localStorage.getItem('vh_onboarded'));const tabs=[{id:'dashboard',label:'Dashboard',icon:'dashboard'},{id:'intel',label:'Intel',icon:'zap'},{id:'regime',label:'Regime',icon:'regime'},{id:'signals',label:'Signals',icon:'signals'},{id:'portfolio',label:'Portfolio',icon:'portfolio'},{id:'watchlist',label:'Watchlist',icon:'watchlist'},{id:'markets',label:'Markets',icon:'markets'}];
-return<AppProvider><AppContent tab={tab} setTab={setTab} tabs={tabs} onboarded={onboarded} setOnboarded={setOnboarded}/></AppProvider>;}
-function AppContent({tab,setTab,tabs,onboarded,setOnboarded}){const app=useApp();const [showFeedback,setShowFeedback]=useState(false);if(!onboarded)return<OnboardingFlow onDone={()=>setOnboarded(true)}/>;return<div className="app">{app.notification&&<div style={{position:'fixed',top:0,left:0,right:0,zIndex:200,padding:12,background:'linear-gradient(135deg,#b91c1c,#dc2626)',color:'#fff',fontSize:13,fontWeight:600,display:'flex',justifyContent:'space-between'}}><span>{app.notification.text}</span><button onClick={()=>app.setNotification(null)} style={{background:'none',border:'none',color:'#fff',fontWeight:700}}>✕</button></div>}<div className="main">{tab==='dashboard'&&<DashboardTab/>}{tab==='intel'&&<IntelTab/>}{tab==='regime'&&<RegimeTab/>}{tab==='signals'&&<SignalsTab/>}{tab==='portfolio'&&<PortfolioTab/>}{tab==='watchlist'&&<WatchlistTab/>}{tab==='markets'&&<MarketsTab/>}</div><div className="tab-bar">{tabs.map(t=><button key={t.id} className={`tab-btn ${tab===t.id?'active':''}`} onClick={()=>setTab(t.id)}><Icon name={t.icon} size={20} color={tab===t.id?'var(--blue)':'var(--text3)'}/><span>{t.label}</span></button>)}</div><button onClick={()=>setShowFeedback(true)} style={{position:'fixed',bottom:74,right:16,zIndex:100,background:'var(--blue)',color:'#fff',border:'none',borderRadius:24,padding:'8px 14px',fontSize:12,fontWeight:700,boxShadow:'0 4px 16px rgba(59,130,246,.4)',cursor:'pointer',display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:14}}>💬</span> Feedback</button>{showFeedback&&<FeedbackModal onClose={()=>setShowFeedback(false)}/>}</div>;}
+// ─── LANDING PAGE ────────────────────────────────────────────────────────────
+function LandingPage({onDemo,onSetup}){
+  return<div style={{position:'fixed',inset:0,background:'#0a0f1e',overflowY:'auto',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'24px 20px',minHeight:'100vh'}}>
+    {/* Background glow */}
+    <div style={{position:'absolute',top:'15%',left:'50%',transform:'translateX(-50%)',width:400,height:400,background:'radial-gradient(circle,rgba(59,130,246,.12) 0%,transparent 70%)',pointerEvents:'none'}}/>
+    <div style={{position:'relative',width:'100%',maxWidth:420,textAlign:'center'}}>
+      {/* Logo */}
+      <div style={{marginBottom:8}}>
+        <span style={{fontSize:48}}>📊</span>
+      </div>
+      <div style={{fontSize:30,fontWeight:800,color:'#e8eaf0',letterSpacing:'-1px',marginBottom:6}}>VolatilityHarvest</div>
+      <div style={{fontSize:15,color:'#94a3b8',marginBottom:36,lineHeight:1.5}}>Institutional-grade portfolio decisions<br/>for disciplined investors</div>
+
+      {/* Feature pills */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:36}}>
+        {[
+          {icon:'📈',title:'Live Signals',desc:'ADD · TRIM · EXIT triggers'},
+          {icon:'🛡️',title:'Circuit Breaker',desc:'Drawdown protection'},
+          {icon:'🌐',title:'Market Regime',desc:'Risk-On / Risk-Off / Inflation'},
+          {icon:'⚡',title:'Setup Score',desc:'RSI + MA50 + R:R + Regime'},
+        ].map((f,i)=><div key={i} style={{background:'rgba(255,255,255,.04)',border:'1px solid rgba(255,255,255,.08)',borderRadius:12,padding:'14px 12px',textAlign:'left'}}>
+          <div style={{fontSize:22,marginBottom:4}}>{f.icon}</div>
+          <div style={{fontSize:13,fontWeight:700,color:'#e8eaf0'}}>{f.title}</div>
+          <div style={{fontSize:11,color:'#64748b',marginTop:2}}>{f.desc}</div>
+        </div>)}
+      </div>
+
+      {/* CTAs */}
+      <button onClick={onDemo} style={{width:'100%',padding:'15px',background:'linear-gradient(135deg,#3b82f6,#2563eb)',color:'#fff',border:'none',borderRadius:12,fontSize:16,fontWeight:800,cursor:'pointer',marginBottom:10,boxShadow:'0 4px 20px rgba(59,130,246,.4)',letterSpacing:'-.3px'}}>
+        Try Demo →
+      </button>
+      <button onClick={onSetup} style={{width:'100%',padding:'14px',background:'rgba(255,255,255,.06)',color:'#e8eaf0',border:'1px solid rgba(255,255,255,.12)',borderRadius:12,fontSize:15,fontWeight:700,cursor:'pointer'}}>
+        Set Up My Portfolio
+      </button>
+      <div style={{marginTop:20,fontSize:11,color:'#334155'}}>No account needed · Data stays on your device</div>
+    </div>
+  </div>;
+}
+
+// ─── DEMO BANNER ─────────────────────────────────────────────────────────────
+function DemoBanner({onSetup}){
+  return<div style={{position:'fixed',top:0,left:0,right:0,zIndex:300,background:'linear-gradient(90deg,#1e3a5f,#1e293b)',borderBottom:'1px solid rgba(59,130,246,.3)',padding:'8px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
+    <div style={{display:'flex',alignItems:'center',gap:6}}>
+      <span style={{fontSize:12}}>📊</span>
+      <span style={{fontSize:12,fontWeight:700,color:'#94a3b8'}}>Demo Mode</span>
+      <span style={{fontSize:11,color:'#475569'}}>· Sample portfolio</span>
+    </div>
+    <button onClick={onSetup} style={{background:'var(--blue)',color:'#fff',border:'none',borderRadius:8,padding:'5px 12px',fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>Set up mine →</button>
+  </div>;
+}
+
+function App(){
+  const [showLanding,setShowLanding]=useState(()=>!localStorage.getItem('vh_onboarded'));
+  const [demoMode,setDemoMode]=useState(false);
+  const [onboarded,setOnboarded]=useState(()=>!!localStorage.getItem('vh_onboarded'));
+  const tabs=[{id:'dashboard',label:'Dashboard',icon:'dashboard'},{id:'intel',label:'Intel',icon:'zap'},{id:'regime',label:'Regime',icon:'regime'},{id:'signals',label:'Signals',icon:'signals'},{id:'portfolio',label:'Portfolio',icon:'portfolio'},{id:'watchlist',label:'Watchlist',icon:'watchlist'},{id:'markets',label:'Markets',icon:'markets'}];
+  const [tab,setTab]=useState('dashboard');
+
+  if(showLanding&&!onboarded&&!demoMode)return<LandingPage
+    onDemo={()=>{setShowLanding(false);setDemoMode(true);}}
+    onSetup={()=>{setShowLanding(false);setDemoMode(false);}}/>;
+
+  return<AppProvider demoMode={demoMode}><AppContent tab={tab} setTab={setTab} tabs={tabs}
+    onboarded={onboarded||demoMode}
+    setOnboarded={(v)=>{setOnboarded(v);setDemoMode(false);}}
+    demoMode={demoMode}
+    onExitDemo={()=>{setDemoMode(false);}}/></AppProvider>;
+}
+
+function AppContent({tab,setTab,tabs,onboarded,setOnboarded,demoMode,onExitDemo}){
+  const app=useApp();
+  const [showFeedback,setShowFeedback]=useState(false);
+  if(!onboarded)return<OnboardingFlow onDone={()=>setOnboarded(true)}/>;
+  const mainStyle=demoMode?{paddingTop:52}:{};
+  return<div className="app">
+    {demoMode&&<DemoBanner onSetup={onExitDemo}/>}
+    {app.notification&&<div style={{position:'fixed',top:demoMode?40:0,left:0,right:0,zIndex:200,padding:12,background:'linear-gradient(135deg,#b91c1c,#dc2626)',color:'#fff',fontSize:13,fontWeight:600,display:'flex',justifyContent:'space-between'}}><span>{app.notification.text}</span><button onClick={()=>app.setNotification(null)} style={{background:'none',border:'none',color:'#fff',fontWeight:700}}>✕</button></div>}
+    <div className="main" style={mainStyle}>{tab==='dashboard'&&<DashboardTab/>}{tab==='intel'&&<IntelTab/>}{tab==='regime'&&<RegimeTab/>}{tab==='signals'&&<SignalsTab/>}{tab==='portfolio'&&<PortfolioTab/>}{tab==='watchlist'&&<WatchlistTab/>}{tab==='markets'&&<MarketsTab/>}</div>
+    <div className="tab-bar">{tabs.map(t=><button key={t.id} className={`tab-btn ${tab===t.id?'active':''}`} onClick={()=>setTab(t.id)}><Icon name={t.icon} size={20} color={tab===t.id?'var(--blue)':'var(--text3)'}/><span>{t.label}</span></button>)}</div>
+    <button onClick={()=>setShowFeedback(true)} style={{position:'fixed',bottom:74,right:16,zIndex:100,background:'var(--blue)',color:'#fff',border:'none',borderRadius:24,padding:'8px 14px',fontSize:12,fontWeight:700,boxShadow:'0 4px 16px rgba(59,130,246,.4)',cursor:'pointer',display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:14}}>💬</span> Feedback</button>
+    {showFeedback&&<FeedbackModal onClose={()=>setShowFeedback(false)}/>}
+  </div>;
+}
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
