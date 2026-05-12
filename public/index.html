@@ -922,15 +922,15 @@ function PositionDetail({pos,onBack}){
 
 // ─── PORTFOLIO TAB ──────────────────────────────────────────────────────────
 function PortfolioTab(){
-  const app=useApp();const [theme,setTheme]=useState('All');const [showAdd,setShowAdd]=useState(false);const [showTrade,setShowTrade]=useState(false);
+  const app=useApp();const [theme,setTheme]=useState('All');const [showAdd,setShowAdd]=useState(false);const [showTrade,setShowTrade]=useState(false);const [showImport,setShowImport]=useState(false);
   const filtered=theme==='All'?app.positions:app.positions.filter(p=>p.theme===theme);
   const themeAllocs=useMemo(()=>{const total=Math.max(1,app.positionsValue);const g={};app.positions.forEach(p=>{if(!g[p.theme])g[p.theme]=0;g[p.theme]+=p.currentPrice*p.shares;});return Object.entries(g).map(([t,v])=>({theme:t,value:v,pct:v/total*100})).sort((a,b)=>b.value-a.value);},[app.positions,app.positionsValue]);
-  return<div className="fade-in"><div className="page-header"><div className="page-title">Portfolio</div><div className="header-actions"><button className="refresh-btn" onClick={()=>exportCSV(app.positions)}><Icon name="download" size={14}/> CSV</button><button className="refresh-btn" style={{background:'var(--green)',color:'#fff',border:'none',fontWeight:700,padding:'6px 12px'}} onClick={()=>setShowTrade(true)}>📊 Trade</button><button className="refresh-btn" onClick={()=>setShowAdd(true)}><Icon name="plus" size={14}/></button></div></div>
+  return<div className="fade-in"><div className="page-header"><div className="page-title">Portfolio</div><div className="header-actions"><button className="refresh-btn" onClick={()=>exportCSV(app.positions)}><Icon name="download" size={14}/> CSV</button><button className="refresh-btn" style={{background:'var(--purple)',color:'#fff',border:'none',fontWeight:700,padding:'6px 12px',display:'flex',alignItems:'center',gap:5}} onClick={()=>setShowImport(true)}>📷 Import</button><button className="refresh-btn" style={{background:'var(--green)',color:'#fff',border:'none',fontWeight:700,padding:'6px 12px'}} onClick={()=>setShowTrade(true)}>📊 Trade</button><button className="refresh-btn" onClick={()=>setShowAdd(true)}><Icon name="plus" size={14}/></button></div></div>
   <div className="stats-grid"><div className="stat-card"><div className="stat-label">Invested</div><div className="stat-value mono" style={{fontSize:16}}>{fmt$(app.positionsCost)}</div></div><div className="stat-card"><div className="stat-label">Market Val</div><div className="stat-value mono" style={{fontSize:16}}>{fmt$(app.positionsValue)}</div></div><div className="stat-card"><div className="stat-label">P&L</div><div className="stat-value mono" style={{fontSize:16,color:pnlColor(app.totalPnL)}}>{pnlSign(app.totalPnL)}{fmt$(app.totalPnL)}</div></div><div className="stat-card"><div className="stat-label">Return</div><div className="stat-value mono" style={{fontSize:16,color:pnlColor(app.totalPnLPct)}}>{pnlSign(app.totalPnLPct)}{fmtPct(app.totalPnLPct)}</div></div></div>
   {themeAllocs.length>0&&<div className="card"><div className="card-title" style={{marginBottom:10}}>Theme Allocation</div><div className="divider"/>{themeAllocs.map(a=><div key={a.theme} style={{marginBottom:8}}><div style={{display:'flex',justifyContent:'space-between',fontSize:13,marginBottom:3}}><span>{a.theme}</span><span style={{fontWeight:700,color:a.pct>30?'var(--red)':'var(--text)'}}>{fmtPct(a.pct)}</span></div><div className="progress-bar" style={{height:5}}><div className="progress-fill" style={{width:Math.min(100,a.pct)+'%',background:a.pct>30?'var(--red)':'var(--blue)'}}/></div></div>)}</div>}
   <div className="chip-row" style={{marginBottom:12}}>{THEMES.map(t=><button key={t} className={`chip ${theme===t?'active':''}`} onClick={()=>setTheme(t)}>{t}</button>)}</div>
   {filtered.map(pos=>{const sig=getSignal(pos);const pct=getPnlPct(pos);return<div key={pos.id} className="card" style={{padding:12}}><div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}><div style={{flex:1}}><div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontWeight:800}}>{pos.ticker}</span><RoleBadge role={pos.role}/></div><div style={{fontSize:10,color:'var(--text3)'}}>{pos.shares} shares @ ${pos.buyPrice.toFixed(2)}</div></div><Sparkline data={app.sparklines[pos.ticker.toUpperCase()]} width={50} height={18}/><div style={{textAlign:'right',marginLeft:8}}><div className="mono" style={{fontWeight:700}}>{fmt$(pos.currentPrice*pos.shares)}</div><div className="mono" style={{fontSize:12,color:pnlColor(pct)}}>{pnlSign(pct)}{fmtPct(pct)}</div><SignalBadge signal={sig} compact/></div></div><button className="btn btn-secondary btn-full" style={{marginTop:8,padding:6,fontSize:11}} onClick={()=>{if(confirm(`Delete ${pos.ticker}?`))app.deletePosition(pos.id);}}><Icon name="trash" size={12} color="var(--red)"/> Delete</button></div>;})}
-  {showAdd&&<PositionModal onClose={()=>setShowAdd(false)} position={null}/>}{showTrade&&<RecordTradeModal onClose={()=>setShowTrade(false)}/>}</div>;
+  {showAdd&&<PositionModal onClose={()=>setShowAdd(false)} position={null}/>}{showTrade&&<RecordTradeModal onClose={()=>setShowTrade(false)}/>}{showImport&&<ImportModal onClose={()=>setShowImport(false)}/>}</div>;
 }
 
 // ─── MARKETS TAB ────────────────────────────────────────────────────────────
@@ -1299,6 +1299,144 @@ function FeedbackModal({onClose}){
           {status==='sending'?<><Spinner/> Sending…</>:'Send Feedback →'}
         </button>
       </>}
+      </div>
+    </div>
+  </div>;
+}
+
+// ─── IMPORT FROM SCREENSHOT ─────────────────────────────────────────────────
+function ImportModal({onClose}){
+  const app=useApp();
+  const [step,setStep]=useState('upload'); // upload | ready | parsing | review | done
+  const [imgData,setImgData]=useState(null);
+  const [imgMime,setImgMime]=useState('image/jpeg');
+  const [imgPreview,setImgPreview]=useState(null);
+  const [parsed,setParsed]=useState([]);
+  const [err,setErr]=useState(null);
+  const fileRef=useRef(null);
+
+  const handleFile=e=>{
+    const file=e.target.files[0];if(!file)return;
+    setImgMime(file.type||'image/jpeg');
+    // Compress via canvas if image is large
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const img=new Image();
+      img.onload=()=>{
+        const MAX=1200;
+        let {width:w,height:h}=img;
+        if(w>MAX||h>MAX){const r=Math.min(MAX/w,MAX/h);w=Math.round(w*r);h=Math.round(h*r);}
+        const c=document.createElement('canvas');c.width=w;c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        const dataUrl=c.toDataURL('image/jpeg',0.85);
+        setImgPreview(dataUrl);
+        setImgData(dataUrl.split(',')[1]);
+        setStep('ready');
+      };
+      img.src=ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const parse=async()=>{
+    setStep('parsing');setErr(null);
+    try{
+      const r=await fetch('/api/parse-portfolio',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:imgData,mimeType:'image/jpeg'})});
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.error||'Scan failed');
+      if(!d.positions||d.positions.length===0)throw new Error('No positions found — try a screenshot showing tickers, shares, and prices clearly.');
+      const existing=new Set(app.positions.map(p=>p.ticker.toUpperCase()));
+      setParsed(d.positions.map(p=>({...p,role:'Core',theme:'Technology',buyPrice:p.currentPrice,skip:existing.has(p.ticker)})));
+      setStep('review');
+    }catch(e){setErr(e.message);setStep('ready');}
+  };
+
+  const upd=(i,k,v)=>setParsed(prev=>prev.map((p,idx)=>idx===i?{...p,[k]:v}:p));
+  const addAll=()=>{parsed.filter(p=>!p.skip).forEach(p=>app.addPosition({ticker:p.ticker,name:p.name,role:p.role,theme:p.theme,buyPrice:p.buyPrice,currentPrice:p.currentPrice,shares:p.shares}));setStep('done');};
+  const toAdd=parsed.filter(p=>!p.skip).length;
+
+  return<div style={{position:'fixed',inset:0,zIndex:500,background:'rgba(0,0,0,.75)',display:'flex',alignItems:'flex-end',justifyContent:'center',backdropFilter:'blur(2px)'}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+    <div style={{background:'var(--bg2)',borderRadius:'20px 20px 0 0',width:'100%',maxWidth:480,maxHeight:'92vh',overflowY:'auto',boxShadow:'0 -8px 40px rgba(0,0,0,.5)'}}>
+      <div style={{display:'flex',justifyContent:'center',padding:'12px 0 4px'}}><div style={{width:36,height:4,borderRadius:2,background:'var(--border)'}}/></div>
+      <div style={{padding:'8px 20px 32px'}}>
+
+        {/* DONE */}
+        {step==='done'&&<div style={{textAlign:'center',padding:'32px 0'}}>
+          <div style={{fontSize:48,marginBottom:12}}>✅</div>
+          <div style={{fontSize:18,fontWeight:800,marginBottom:6}}>Positions added!</div>
+          <div style={{fontSize:13,color:'var(--text3)',marginBottom:24}}>{toAdd} position{toAdd!==1?'s':''} imported from your screenshot.</div>
+          <button className="btn btn-primary btn-full" onClick={onClose}>Back to Portfolio</button>
+        </div>}
+
+        {/* HEADER */}
+        {step!=='done'&&<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+          <div><div style={{fontSize:17,fontWeight:800}}>📷 Import from Screenshot</div><div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>Robinhood · IBKR · Schwab · eToro · any broker</div></div>
+          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text3)',fontSize:20,cursor:'pointer'}}>✕</button>
+        </div>}
+
+        {/* UPLOAD / READY */}
+        {(step==='upload'||step==='ready')&&<>
+          <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleFile} style={{display:'none'}}/>
+          {!imgPreview
+            ?<div onClick={()=>fileRef.current?.click()} style={{border:'2px dashed var(--border2)',borderRadius:12,padding:'36px 20px',textAlign:'center',cursor:'pointer',marginBottom:12}}>
+              <div style={{fontSize:36,marginBottom:8}}>📱</div>
+              <div style={{fontWeight:700,marginBottom:4}}>Tap to choose screenshot</div>
+              <div style={{fontSize:12,color:'var(--text3)'}}>Photo of your broker holdings screen</div>
+            </div>
+            :<div style={{position:'relative',marginBottom:12}}>
+              <img src={imgPreview} alt="preview" style={{width:'100%',borderRadius:10,maxHeight:220,objectFit:'contain',background:'var(--bg3)'}}/>
+              <button onClick={()=>{setImgData(null);setImgPreview(null);setStep('upload');}} style={{position:'absolute',top:6,right:6,background:'rgba(0,0,0,.6)',color:'#fff',border:'none',borderRadius:20,padding:'2px 8px',fontSize:12,cursor:'pointer'}}>✕ Change</button>
+            </div>}
+          {err&&<div style={{background:'var(--red-bg)',border:'1px solid #b91c1c44',borderRadius:8,padding:'10px 12px',marginBottom:12,fontSize:12,color:'var(--red)'}}>{err}</div>}
+          <div style={{fontSize:11,color:'var(--text3)',marginBottom:12,background:'var(--bg3)',borderRadius:8,padding:'8px 10px'}}>
+            💡 <strong>Tip:</strong> Screenshot the Holdings or Positions page showing ticker, shares &amp; price. Ensure text is readable.
+          </div>
+          {imgPreview&&<button className="btn btn-primary btn-full" style={{padding:14,fontSize:15}} onClick={parse}>Scan with AI →</button>}
+        </>}
+
+        {/* PARSING */}
+        {step==='parsing'&&<div style={{textAlign:'center',padding:'40px 0'}}>
+          <div style={{marginBottom:16}}><Spinner/></div>
+          <div style={{fontWeight:700,marginBottom:4}}>Scanning your screenshot…</div>
+          <div style={{fontSize:12,color:'var(--text3)'}}>Reading tickers, shares &amp; prices</div>
+        </div>}
+
+        {/* REVIEW */}
+        {step==='review'&&<>
+          <div style={{fontSize:13,color:'var(--text3)',marginBottom:12}}>Found <strong style={{color:'var(--text)'}}>{parsed.length}</strong> position{parsed.length!==1?'s':''}. Set the role for each:</div>
+          {parsed.map((p,i)=><div key={i} style={{background:'var(--bg3)',borderRadius:10,padding:12,marginBottom:8,opacity:p.skip?.6:1}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
+              <div style={{display:'flex',alignItems:'center',gap:6}}>
+                {p.skip&&<span style={{fontSize:10,background:'var(--orange-bg)',color:'var(--orange)',padding:'2px 6px',borderRadius:4,fontWeight:700}}>Already in portfolio</span>}
+                <span style={{fontWeight:800,fontSize:15}}>{p.ticker}</span>
+                <span style={{fontSize:11,color:'var(--text3)'}}>{p.name}</span>
+              </div>
+              {p.skip
+                ?<button onClick={()=>upd(i,'skip',false)} style={{fontSize:11,background:'none',border:'1px solid var(--border2)',borderRadius:6,padding:'2px 8px',color:'var(--blue)',cursor:'pointer'}}>Add anyway</button>
+                :<button onClick={()=>upd(i,'skip',true)} style={{fontSize:11,background:'none',border:'none',color:'var(--text3)',cursor:'pointer'}}>✕</button>}
+            </div>
+            <div style={{display:'flex',gap:8,fontSize:12,marginBottom:8}}>
+              <span style={{color:'var(--text3)'}}>Shares:</span><strong>{p.shares}</strong>
+              <span style={{color:'var(--text3)',marginLeft:8}}>Price:</span><strong>${p.currentPrice.toFixed(2)}</strong>
+            </div>
+            <div style={{display:'flex',gap:6}}>
+              <select value={p.role} onChange={e=>upd(i,'role',e.target.value)} style={{flex:1,padding:'5px 8px',fontSize:12}}>
+                {['Core','Satellite','Hedge'].map(r=><option key={r}>{r}</option>)}
+              </select>
+              <select value={p.theme} onChange={e=>upd(i,'theme',e.target.value)} style={{flex:1.5,padding:'5px 8px',fontSize:12}}>
+                {['Technology','Broad Market','Healthcare','Commodities','Diversifiers','Hedges'].map(t=><option key={t}>{t}</option>)}
+              </select>
+            </div>
+          </div>)}
+          <div style={{fontSize:11,color:'var(--text3)',marginBottom:12,background:'var(--bg3)',borderRadius:8,padding:'8px 10px'}}>
+            📝 Buy price set to today's price — edit individual positions later to set your actual cost basis.
+          </div>
+          <button className="btn btn-primary btn-full" style={{padding:14,fontSize:15}} onClick={addAll} disabled={toAdd===0}>
+            Add {toAdd} Position{toAdd!==1?'s':''} →
+          </button>
+          <button className="btn btn-secondary btn-full" style={{marginTop:8,fontSize:13}} onClick={()=>{setImgData(null);setImgPreview(null);setStep('upload');}}>Try Different Screenshot</button>
+        </>}
+
       </div>
     </div>
   </div>;
