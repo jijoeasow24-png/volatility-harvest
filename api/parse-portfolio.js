@@ -8,34 +8,26 @@ export default async function handler(req, res) {
   const { image, mimeType } = req.body || {};
   if (!image) return res.status(400).json({ error: 'Image is required' });
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: 'API not configured — add ANTHROPIC_API_KEY to Vercel env vars' });
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: 'API not configured — add GEMINI_API_KEY to Vercel env vars' });
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1024,
-        messages: [{
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: {
-                type: 'base64',
-                media_type: mimeType || 'image/jpeg',
-                data: image
-              }
-            },
-            {
-              type: 'text',
-              text: `Extract all stock/ETF portfolio positions from this investing app screenshot. Return ONLY a valid JSON array with no extra text or explanation, in this exact format:
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              {
+                inline_data: {
+                  mime_type: mimeType || 'image/jpeg',
+                  data: image
+                }
+              },
+              {
+                text: `Extract all stock/ETF portfolio positions from this investing app screenshot. Return ONLY a valid JSON array with no extra text or explanation, in this exact format:
 [
   {"ticker": "AAPL", "name": "Apple Inc.", "shares": 10, "currentPrice": 195.50}
 ]
@@ -49,19 +41,21 @@ Rules:
 - Skip cash, cash equivalents, bonds, money market funds, or anything non-equity
 - If you cannot find any valid positions, return exactly: []
 - Return ONLY the JSON array, nothing else — no markdown, no explanation`
-            }
-          ]
-        }]
-      })
-    });
+              }
+            ]
+          }],
+          generationConfig: { temperature: 0, maxOutputTokens: 1024 }
+        })
+      }
+    );
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`Anthropic API error: ${errText}`);
+      throw new Error(`Gemini API error: ${errText}`);
     }
 
     const data = await response.json();
-    const text = data.content?.[0]?.text?.trim() || '[]';
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '[]';
 
     // Extract JSON array (guard against any stray text)
     let positions = [];
@@ -87,6 +81,6 @@ Rules:
 
   } catch (e) {
     console.error('parse-portfolio error:', e.message);
-    res.status(500).json({ error: 'Failed to scan image. Please try a clearer screenshot.' });
+    res.status(500).json({ error: 'Failed to scan image. Please try again.' });
   }
 }
