@@ -1376,7 +1376,7 @@ function ImportModal({onClose}){
 
         {/* UPLOAD / READY */}
         {(step==='upload'||step==='ready')&&<>
-          <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleFile} style={{display:'none'}}/>
+          <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{display:'none'}}/>
           {!imgPreview
             ?<div onClick={()=>fileRef.current?.click()} style={{border:'2px dashed var(--border2)',borderRadius:12,padding:'36px 20px',textAlign:'center',cursor:'pointer',marginBottom:12}}>
               <div style={{fontSize:36,marginBottom:8}}>📱</div>
