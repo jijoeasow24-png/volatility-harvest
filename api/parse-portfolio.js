@@ -1,4 +1,3 @@
-//v2
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -82,6 +81,6 @@ Rules:
 
   } catch (e) {
     console.error('parse-portfolio error:', e.message);
-    res.status(500).json({ error: 'Failed to scan image. Please try again.' });
+    res.status(500).json({ error: e.message || 'Failed to scan image. Please try again.' });
   }
 }
