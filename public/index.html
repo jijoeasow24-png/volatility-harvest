@@ -1415,9 +1415,17 @@ function ImportModal({onClose}){
                 ?<button onClick={()=>upd(i,'skip',false)} style={{fontSize:11,background:'none',border:'1px solid var(--border2)',borderRadius:6,padding:'2px 8px',color:'var(--blue)',cursor:'pointer'}}>Add anyway</button>
                 :<button onClick={()=>upd(i,'skip',true)} style={{fontSize:11,background:'none',border:'none',color:'var(--text3)',cursor:'pointer'}}>✕</button>}
             </div>
-            <div style={{display:'flex',gap:8,fontSize:12,marginBottom:8}}>
+            <div style={{display:'flex',gap:8,fontSize:12,marginBottom:8,flexWrap:'wrap'}}>
               <span style={{color:'var(--text3)'}}>Shares:</span><strong>{p.shares}</strong>
               <span style={{color:'var(--text3)',marginLeft:8}}>Price:</span><strong>${p.currentPrice.toFixed(2)}</strong>
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
+              <label style={{fontSize:12,color:'var(--text3)',whiteSpace:'nowrap'}}>Avg Cost $</label>
+              <input type="number" step="0.01" min="0" value={p.buyPrice} onChange={e=>upd(i,'buyPrice',parseFloat(e.target.value)||p.currentPrice)}
+                style={{flex:1,padding:'5px 8px',fontSize:12,background:'var(--bg2)',border:'1px solid var(--border2)',borderRadius:6,color:'var(--text)'}}/>
+              <span style={{fontSize:11,color:p.buyPrice!==p.currentPrice?'#22c55e':'var(--text3)',whiteSpace:'nowrap'}}>
+                {p.buyPrice!==p.currentPrice?(((p.currentPrice-p.buyPrice)/p.buyPrice*100)>0?'+':'')+((p.currentPrice-p.buyPrice)/p.buyPrice*100).toFixed(1)+'%':'no P&L'}
+              </span>
             </div>
             <div style={{display:'flex',gap:6}}>
               <select value={p.role} onChange={e=>upd(i,'role',e.target.value)} style={{flex:1,padding:'5px 8px',fontSize:12}}>
@@ -1429,7 +1437,7 @@ function ImportModal({onClose}){
             </div>
           </div>)}
           <div style={{fontSize:11,color:'var(--text3)',marginBottom:12,background:'var(--bg3)',borderRadius:8,padding:'8px 10px'}}>
-            📝 Buy price set to today's price — edit individual positions later to set your actual cost basis.
+            💡 Enter your <strong>Avg Cost</strong> per share for accurate P&L — find it in your broker's position detail page.
           </div>
           <button className="btn btn-primary btn-full" style={{padding:14,fontSize:15}} onClick={addAll} disabled={toAdd===0}>
             Add {toAdd} Position{toAdd!==1?'s':''} →
