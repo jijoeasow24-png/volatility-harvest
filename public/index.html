@@ -130,6 +130,7 @@ back:<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={col
 search:<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
 link:<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15,3 21,3 21,9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>,
 zap:<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
+forecast:<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M3 17l4-8 4 4 4-6 4 4"/><path d="M3 21h18"/><path d="M21 3l-4 4"/><path d="M17 3h4v4"/></svg>,
 };return i[name]||null;};
 
 // ─── COMPONENTS ─────────────────────────────────────────────────────────────
@@ -1450,6 +1451,118 @@ function ImportModal({onClose}){
   </div>;
 }
 
+// ─── FORECAST TAB ────────────────────────────────────────────────────────────
+function ForecastTab(){
+  const app=useApp();
+  const startValue=app.positions.reduce((s,p)=>s+(p.currentPrice*p.shares),0)||10000;
+  const [horizon,setHorizon]=useState(5);
+  const [monthly,setMonthly]=useState(500);
+  const [bull,setBull]=useState(20);
+  const [base,setBase]=useState(10);
+  const [bear,setBear]=useState(-5);
+
+  const project=(annualPct,months)=>{
+    const r=annualPct/100/12;
+    let v=startValue;
+    const pts=[v];
+    for(let m=1;m<=months;m++){v=v*(1+r)+Number(monthly);pts.push(v);}
+    return pts;
+  };
+
+  const months=horizon*12;
+  const bullPts=project(bull,months);
+  const basePts=project(base,months);
+  const bearPts=project(bear,months);
+
+  const allVals=[...bullPts,...basePts,...bearPts];
+  const minV=Math.min(...allVals);
+  const maxV=Math.max(...allVals);
+  const range=maxV-minV||1;
+
+  const W=340,H=180,PAD={t:12,r:48,b:28,l:52};
+  const cw=W-PAD.l-PAD.r,ch=H-PAD.t-PAD.b;
+
+  const toX=i=>(i/months)*cw+PAD.l;
+  const toY=v=>PAD.t+ch-(((v-minV)/range)*ch);
+
+  const makePath=pts=>pts.map((v,i)=>`${i===0?'M':'L'}${toX(i).toFixed(1)},${toY(v).toFixed(1)}`).join(' ');
+
+  const fmt=v=>{if(v>=1e6)return'$'+(v/1e6).toFixed(2)+'M';if(v>=1e3)return'$'+(v/1e3).toFixed(0)+'K';return'$'+v.toFixed(0);};
+  const pct=(end,start)=>((end-start)/start*100).toFixed(1)+'%';
+  const totalContrib=startValue+Number(monthly)*months;
+
+  const scenarios=[
+    {label:'Bull',color:'#22c55e',bg:'rgba(34,197,94,.1)',pts:bullPts,pct:bull,setPct:setBull},
+    {label:'Base',color:'#3b82f6',bg:'rgba(59,130,246,.1)',pts:basePts,pct:base,setPct:setBase},
+    {label:'Bear',color:'#ef4444',bg:'rgba(239,68,68,.1)',pts:bearPts,pct:bear,setPct:setBear},
+  ];
+
+  const gridVals=4;
+  const yTicks=Array.from({length:gridVals+1},(_,i)=>minV+(range/gridVals)*i);
+
+  return<div style={{paddingBottom:8}}>
+    <div className="page-header"><div className="page-title">Forecast</div></div>
+
+    {/* Controls */}
+    <div className="card" style={{marginBottom:10}}>
+      <div style={{fontSize:13,fontWeight:700,marginBottom:10,color:'var(--text2)'}}>Starting from <span style={{color:'var(--green)'}}>{fmt(startValue)}</span></div>
+      <div style={{display:'flex',gap:8,marginBottom:12}}>
+        {[1,3,5,10].map(y=><button key={y} onClick={()=>setHorizon(y)} style={{flex:1,padding:'6px 0',borderRadius:8,border:`1px solid ${horizon===y?'var(--blue)':'var(--border2)'}`,background:horizon===y?'var(--blue-bg)':'var(--bg3)',color:horizon===y?'var(--blue)':'var(--text3)',fontSize:13,fontWeight:700}}>{y}Y</button>)}
+      </div>
+      <div style={{display:'flex',gap:8,alignItems:'center'}}>
+        <label style={{fontSize:12,color:'var(--text3)',whiteSpace:'nowrap'}}>Monthly +$</label>
+        <input type="number" min="0" step="100" value={monthly} onChange={e=>setMonthly(e.target.value)} style={{flex:1,padding:'6px 10px',fontSize:13}}/>
+      </div>
+    </div>
+
+    {/* Scenario return inputs */}
+    <div className="card" style={{marginBottom:10}}>
+      <div style={{fontSize:12,fontWeight:700,color:'var(--text3)',marginBottom:8,textTransform:'uppercase',letterSpacing:'.5px'}}>Annual Return % per Scenario</div>
+      <div style={{display:'flex',gap:8}}>
+        {scenarios.map(s=><div key={s.label} style={{flex:1,background:s.bg,border:`1px solid ${s.color}33`,borderRadius:8,padding:'8px 6px',textAlign:'center'}}>
+          <div style={{fontSize:11,fontWeight:700,color:s.color,marginBottom:4}}>{s.label}</div>
+          <input type="number" step="1" value={s.pct} onChange={e=>s.setPct(Number(e.target.value))} style={{textAlign:'center',padding:'4px 6px',fontSize:13,fontWeight:700,background:'transparent',border:'none',borderBottom:`1px solid ${s.color}66`,borderRadius:0,color:s.color,width:'100%'}}/>
+          <div style={{fontSize:9,color:'var(--text3)',marginTop:2}}>% / yr</div>
+        </div>)}
+      </div>
+    </div>
+
+    {/* Chart */}
+    <div className="card" style={{marginBottom:10,overflowX:'auto'}}>
+      <svg width={W} height={H} style={{display:'block',margin:'0 auto'}}>
+        {/* Grid lines */}
+        {yTicks.map((v,i)=><g key={i}>
+          <line x1={PAD.l} y1={toY(v)} x2={PAD.l+cw} y2={toY(v)} stroke="var(--border)" strokeWidth="1"/>
+          <text x={PAD.l-4} y={toY(v)+4} textAnchor="end" fontSize="9" fill="var(--text3)">{fmt(v)}</text>
+        </g>)}
+        {/* X axis labels */}
+        {[0,Math.floor(months/2),months].map(m=><text key={m} x={toX(m)} y={H-6} textAnchor="middle" fontSize="9" fill="var(--text3)">{m===0?'Now':m===months?`${horizon}Y`:`${Math.round(m/12)}Y`}</text>)}
+        {/* Lines */}
+        {scenarios.map(s=><path key={s.label} d={makePath(s.pts)} fill="none" stroke={s.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>)}
+        {/* End labels */}
+        {scenarios.map(s=><text key={s.label} x={PAD.l+cw+4} y={toY(s.pts[months])+4} fontSize="9" fontWeight="700" fill={s.color}>{s.label}</text>)}
+      </svg>
+    </div>
+
+    {/* Summary cards */}
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:8}}>
+      {scenarios.map(s=>{
+        const final=s.pts[months];
+        const gain=final-totalContrib;
+        return<div key={s.label} style={{background:s.bg,border:`1px solid ${s.color}44`,borderRadius:10,padding:'10px 8px',textAlign:'center'}}>
+          <div style={{fontSize:11,fontWeight:800,color:s.color,marginBottom:4}}>{s.label}</div>
+          <div style={{fontSize:14,fontWeight:800,color:'var(--text)',marginBottom:2}}>{fmt(final)}</div>
+          <div style={{fontSize:10,color:gain>=0?'var(--green)':'var(--red)',fontWeight:700}}>{gain>=0?'+':''}{fmt(gain)}</div>
+          <div style={{fontSize:9,color:'var(--text3)',marginTop:2}}>{pct(final,startValue)} total</div>
+        </div>;
+      })}
+    </div>
+    <div style={{fontSize:10,color:'var(--text3)',textAlign:'center',padding:'4px 0'}}>
+      Total contributed: {fmt(totalContrib)} · Starting: {fmt(startValue)}
+    </div>
+  </div>;
+}
+
 // ─── LANDING PAGE ────────────────────────────────────────────────────────────
 function LandingPage({onDemo,onSetup}){
   return<div style={{position:'fixed',inset:0,background:'#0a0f1e',overflowY:'auto',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'24px 20px',minHeight:'100vh'}}>
@@ -1505,7 +1618,7 @@ function App(){
   const [showLanding,setShowLanding]=useState(()=>!localStorage.getItem('vh_onboarded'));
   const [demoMode,setDemoMode]=useState(false);
   const [onboarded,setOnboarded]=useState(()=>!!localStorage.getItem('vh_onboarded'));
-  const tabs=[{id:'dashboard',label:'Dashboard',icon:'dashboard'},{id:'intel',label:'Intel',icon:'zap'},{id:'regime',label:'Regime',icon:'regime'},{id:'signals',label:'Signals',icon:'signals'},{id:'portfolio',label:'Portfolio',icon:'portfolio'},{id:'watchlist',label:'Watchlist',icon:'watchlist'},{id:'markets',label:'Markets',icon:'markets'}];
+  const tabs=[{id:'dashboard',label:'Dashboard',icon:'dashboard'},{id:'intel',label:'Intel',icon:'zap'},{id:'regime',label:'Regime',icon:'regime'},{id:'signals',label:'Signals',icon:'signals'},{id:'portfolio',label:'Portfolio',icon:'portfolio'},{id:'watchlist',label:'Watchlist',icon:'watchlist'},{id:'markets',label:'Markets',icon:'markets'},{id:'forecast',label:'Forecast',icon:'forecast'}];
   const [tab,setTab]=useState('dashboard');
 
   if(showLanding&&!onboarded&&!demoMode)return<LandingPage
@@ -1527,7 +1640,7 @@ function AppContent({tab,setTab,tabs,onboarded,setOnboarded,demoMode,onExitDemo}
   return<div className="app">
     {demoMode&&<DemoBanner onSetup={onExitDemo}/>}
     {app.notification&&<div style={{position:'fixed',top:demoMode?40:0,left:0,right:0,zIndex:200,padding:12,background:'linear-gradient(135deg,#b91c1c,#dc2626)',color:'#fff',fontSize:13,fontWeight:600,display:'flex',justifyContent:'space-between'}}><span>{app.notification.text}</span><button onClick={()=>app.setNotification(null)} style={{background:'none',border:'none',color:'#fff',fontWeight:700}}>✕</button></div>}
-    <div className="main" style={mainStyle}>{tab==='dashboard'&&<DashboardTab/>}{tab==='intel'&&<IntelTab/>}{tab==='regime'&&<RegimeTab/>}{tab==='signals'&&<SignalsTab/>}{tab==='portfolio'&&<PortfolioTab/>}{tab==='watchlist'&&<WatchlistTab/>}{tab==='markets'&&<MarketsTab/>}</div>
+    <div className="main" style={mainStyle}>{tab==='dashboard'&&<DashboardTab/>}{tab==='intel'&&<IntelTab/>}{tab==='regime'&&<RegimeTab/>}{tab==='signals'&&<SignalsTab/>}{tab==='portfolio'&&<PortfolioTab/>}{tab==='watchlist'&&<WatchlistTab/>}{tab==='markets'&&<MarketsTab/>}{tab==='forecast'&&<ForecastTab/>}</div>
     <div className="tab-bar">{tabs.map(t=><button key={t.id} className={`tab-btn ${tab===t.id?'active':''}`} onClick={()=>setTab(t.id)}><Icon name={t.icon} size={20} color={tab===t.id?'var(--blue)':'var(--text3)'}/><span>{t.label}</span></button>)}</div>
     <button onClick={()=>setShowFeedback(true)} style={{position:'fixed',bottom:74,right:16,zIndex:100,background:'var(--blue)',color:'#fff',border:'none',borderRadius:24,padding:'8px 14px',fontSize:12,fontWeight:700,boxShadow:'0 4px 16px rgba(59,130,246,.4)',cursor:'pointer',display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:14}}>💬</span> Feedback</button>
     {showFeedback&&<FeedbackModal onClose={()=>setShowFeedback(false)}/>}
