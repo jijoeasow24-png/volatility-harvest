@@ -1459,7 +1459,7 @@ function ForecastTab(){
   const [monthly,setMonthly]=useState(500);
   const [bull,setBull]=useState(20);
   const [base,setBase]=useState(10);
-  const [bear,setBear]=useState(-5);
+  const [bear,setBear]=useState(-10);
 
   const project=(annualPct,months)=>{
     const r=annualPct/100/12;
@@ -1536,7 +1536,7 @@ function ForecastTab(){
           <text x={PAD.l-4} y={toY(v)+4} textAnchor="end" fontSize="9" fill="var(--text3)">{fmt(v)}</text>
         </g>)}
         {/* X axis labels */}
-        {[0,Math.floor(months/2),months].map(m=><text key={m} x={toX(m)} y={H-6} textAnchor="middle" fontSize="9" fill="var(--text3)">{m===0?'Now':m===months?`${horizon}Y`:`${Math.round(m/12)}Y`}</text>)}
+        {[0,Math.floor(months/2),months].map(m=><text key={m} x={toX(m)} y={H-6} textAnchor="middle" fontSize="9" fill="var(--text3)">{m===0?'Now':m===months?`${horizon}Y`:`${horizon/2}Y`}</text>)}
         {/* Lines */}
         {scenarios.map(s=><path key={s.label} d={makePath(s.pts)} fill="none" stroke={s.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>)}
         {/* End labels */}
