@@ -133,6 +133,7 @@ search:<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c
 link:<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15,3 21,3 21,9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>,
 zap:<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
 forecast:<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M3 17l4-8 4 4 4-6 4 4"/><path d="M3 21h18"/><path d="M21 3l-4 4"/><path d="M17 3h4v4"/></svg>,
+insights:<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>,
 };return i[name]||null;};
 
 // ─── COMPONENTS ─────────────────────────────────────────────────────────────
@@ -177,7 +178,7 @@ function AppProvider({children,demoMode=false}){
   const [autoRegimeData,setAutoRegimeData]=useState(null); // NEW: live indicator data
   const [autoRegimeLoading,setAutoRegimeLoading]=useState(false);
   const [regimeProb,setRegimeProb]=useState(null);
-  const [quotes,setQuotes]=useState({});const [sparklines,setSparklines]=useState({});const [technicals,setTechnicals]=useState({});const [volatility,setVolatility]=useState({});
+  const [quotes,setQuotes]=useState({});const [sparklines,setSparklines]=useState({});const [technicals,setTechnicals]=useState({});const [volatility,setVolatility]=useState({});const [benchmark,setBenchmark]=useState(null);const [priceAlerts,setPriceAlerts]=useState(()=>{try{return JSON.parse(localStorage.getItem('vh_price_alerts')||'[]');}catch{return [];}});
   const [isRefreshing,setIsRefreshing]=useState(false);const [lastRefresh,setLastRefresh]=useState(null);const [refreshError,setRefreshError]=useState(null);
   const [monthlyHistory,setMonthlyHistory]=useState([]);const [actionChecks,setActionChecks]=useState({});
   const [notification,setNotification]=useState(null);
@@ -231,7 +232,9 @@ function AppProvider({children,demoMode=false}){
   const refreshPrices=useCallback(async()=>{
     if(positions.length===0||isRefreshing)return;
     setIsRefreshing(true);setRefreshError(null);
-    try{const tickers=positions.map(p=>p.ticker).join(',');const [qR,sR,tR,vR]=await Promise.all([fetch(`/api/quotes?tickers=${tickers}`),fetch(`/api/sparkline?tickers=${tickers}`),fetch(`/api/technical?tickers=${tickers}`),fetch(`/api/volatility?tickers=${tickers}`)]);const qD=await qR.json();const sD=await sR.json();const tD=await tR.json().catch(()=>({}));const vD=await vR.json().catch(()=>({}));if(Object.keys(qD).length===0)throw new Error('No data');setQuotes(qD);setSparklines(sD);setTechnicals(tD);setVolatility(vD);setPositions(prev=>prev.map(p=>{const q=qD[p.ticker.toUpperCase()];return q?{...p,currentPrice:q.price}:p;}));setLastRefresh(new Date());
+    try{const tickers=positions.map(p=>p.ticker).join(',');const [qR,sR,tR,vR,bR]=await Promise.all([fetch(`/api/quotes?tickers=${tickers}`),fetch(`/api/sparkline?tickers=${tickers}`),fetch(`/api/technical?tickers=${tickers}`),fetch(`/api/volatility?tickers=${tickers}`),fetch('/api/benchmark')]);const qD=await qR.json();const sD=await sR.json();const tD=await tR.json().catch(()=>({}));const vD=await vR.json().catch(()=>({}));const bD=await bR.json().catch(()=>null);if(Object.keys(qD).length===0)throw new Error('No data');setQuotes(qD);setSparklines(sD);setTechnicals(tD);setVolatility(vD);if(bD&&!bD.error)setBenchmark(bD);
+      // ── Price alert check ─────────────────────────────────────────────────
+      setPriceAlerts(prev=>{const triggered=prev.filter(a=>{const q=qD[a.ticker.toUpperCase()];if(!q)return false;return a.direction==='above'?q.price>=a.target:q.price<=a.target;});if(triggered.length>0)setNotification({type:'info',text:`🎯 Price alert: ${triggered.map(a=>`${a.ticker} hit $${a.target}`).join(', ')}`});return prev;});setPositions(prev=>prev.map(p=>{const q=qD[p.ticker.toUpperCase()];return q?{...p,currentPrice:q.price}:p;}));setLastRefresh(new Date());
     const exits=positions.filter(p=>{const q=qD[p.ticker.toUpperCase()];if(!q)return false;const pct=(q.price-p.buyPrice)/p.buyPrice;return pct<=ROLES[p.role]?.stopLoss;});
     if(exits.length>0)setNotification({type:'danger',text:`⚠️ STOP-LOSS on ${exits.map(p=>p.ticker).join(', ')}!`});
     }catch(e){setRefreshError('Price update failed');}setIsRefreshing(false);
@@ -248,7 +251,7 @@ function AppProvider({children,demoMode=false}){
   const toggleActionCheck=(key)=>setActionChecks(prev=>({...prev,[key]:!prev[key]}));
   const updateBudget=(v)=>{setMonthlyBudget(v);localStorage.setItem('vh_monthly_budget',v.toString());};
 
-  return<AppContext.Provider value={{theme,toggleTheme,positions,setPositions,portfolioPeak,setPeak,portfolioTotal,regime,setRegime,regimeAnswers,setRegimeAnswers,lastRegimeCheck,setLastRegimeCheck,autoRegimeData,autoRegimeLoading,fetchAutoRegime,regimeProb,quotes,sparklines,technicals,volatility,isRefreshing,lastRefresh,refreshError,refreshPrices,positionsValue,positionsCost,totalPnL,totalPnLPct,drawdown,circuitLevel,actionableSignals,addPosition,updatePosition,deletePosition,resetPositions,monthlyHistory,actionChecks,toggleActionCheck,notification,setNotification,monthlyBudget,updateBudget,demoMode}}>{children}</AppContext.Provider>;
+  return<AppContext.Provider value={{theme,toggleTheme,positions,setPositions,portfolioPeak,setPeak,portfolioTotal,regime,setRegime,regimeAnswers,setRegimeAnswers,lastRegimeCheck,setLastRegimeCheck,autoRegimeData,autoRegimeLoading,fetchAutoRegime,regimeProb,quotes,sparklines,technicals,volatility,benchmark,priceAlerts,setPriceAlerts,isRefreshing,lastRefresh,refreshError,refreshPrices,positionsValue,positionsCost,totalPnL,totalPnLPct,drawdown,circuitLevel,actionableSignals,addPosition,updatePosition,deletePosition,resetPositions,monthlyHistory,actionChecks,toggleActionCheck,notification,setNotification,monthlyBudget,updateBudget,demoMode}}>{children}</AppContext.Provider>;
 }
 const useApp=()=>useContext(AppContext);
 
@@ -1782,6 +1785,211 @@ function ImportModal({onClose}){
   </div>;
 }
 
+// ─── INSIGHTS TAB ────────────────────────────────────────────────────────────
+function InsightsTab(){
+  const app=useApp();
+  return<div className="fade-in">
+    <div className="page-header"><div className="page-title">Insights</div></div>
+    <BenchmarkCard/>
+    <StressTestCard/>
+    <DCAPlanner/>
+    <PriceAlertsCard/>
+  </div>;
+}
+
+// ── Benchmark Comparison ──────────────────────────────────────────────────────
+function BenchmarkCard(){
+  const app=useApp();
+  const b=app.benchmark;
+  const portfolioReturn=app.positionsCost>0?Math.round((app.positionsValue-app.positionsCost)/app.positionsCost*1000)/10:null;
+
+  const periods=[['1M','ret1M'],['3M','ret3M'],['6M','ret6M'],['1Y','ret1Y']];
+  const color=v=>v===null?'var(--text3)':v>=0?'var(--green)':'var(--red)';
+  const fmt=v=>v===null?'—':(v>=0?'+':'')+v.toFixed(1)+'%';
+
+  return<div className="card" style={{marginBottom:12}}>
+    <div className="card-header"><span className="card-title">📈 vs Benchmark</span><span style={{fontSize:11,color:'var(--text3)'}}>Your portfolio vs index</span></div>
+    <div className="divider"/>
+    {!b&&<div style={{textAlign:'center',padding:'20px 0',color:'var(--text3)',fontSize:13}}>Refreshing prices to load benchmark data…</div>}
+    {b&&<>
+      {/* Header row */}
+      <div style={{display:'grid',gridTemplateColumns:'1.2fr 1fr 1fr 1fr 1fr',gap:4,marginBottom:8}}>
+        <div style={{fontSize:10,color:'var(--text3)',fontWeight:700}}></div>
+        {periods.map(([label])=><div key={label} style={{fontSize:10,color:'var(--text3)',fontWeight:700,textAlign:'center'}}>{label}</div>)}
+      </div>
+      {/* Your portfolio row */}
+      <div style={{display:'grid',gridTemplateColumns:'1.2fr 1fr 1fr 1fr 1fr',gap:4,marginBottom:6,background:'var(--blue-bg)',borderRadius:8,padding:'8px 6px'}}>
+        <div style={{fontSize:12,fontWeight:800,color:'var(--blue)'}}>Your Portfolio</div>
+        {periods.map(([label])=><div key={label} style={{textAlign:'center',fontSize:12,fontWeight:700,color:'var(--blue)'}}>{label==='1Y'||label==='6M'?'—':fmt(portfolioReturn)}</div>)}
+      </div>
+      {/* SPY row */}
+      {['SPY','QQQ'].map(ticker=><div key={ticker} style={{display:'grid',gridTemplateColumns:'1.2fr 1fr 1fr 1fr 1fr',gap:4,marginBottom:6,background:'var(--bg3)',borderRadius:8,padding:'8px 6px'}}>
+        <div style={{fontSize:12,fontWeight:700}}>{ticker}</div>
+        {periods.map(([label,key])=>{const v=b[ticker]?.[key];return<div key={label} style={{textAlign:'center',fontSize:12,fontWeight:600,color:color(v)}}>{fmt(v)}</div>;})}
+      </div>)}
+      <div style={{fontSize:10,color:'var(--text3)',marginTop:6}}>* Your portfolio shows total return since purchase. Index returns are period-based.</div>
+    </>}
+  </div>;
+}
+
+// ── Stress Test ───────────────────────────────────────────────────────────────
+const SCENARIOS=[
+  {name:'2020 COVID Crash',date:'Feb–Mar 2020',color:'#ef4444',drops:{Technology:-35,Healthcare:-20,'Broad Market':-34,Commodities:-40,Diversifiers:-20,Hedges:+15}},
+  {name:'2022 Rate Hike',date:'Jan–Dec 2022',color:'#f59e0b',drops:{Technology:-38,Healthcare:-10,'Broad Market':-25,Commodities:+15,Diversifiers:-15,Hedges:+5}},
+  {name:'2008 Financial Crisis',date:'Oct 2007–Mar 2009',color:'#dc2626',drops:{Technology:-55,Healthcare:-35,'Broad Market':-57,Commodities:-55,Diversifiers:-40,Hedges:+20}},
+  {name:'Mild Correction',date:'Hypothetical -10%',color:'#3b82f6',drops:{Technology:-12,Healthcare:-8,'Broad Market':-10,Commodities:-8,Diversifiers:-6,Hedges:+3}},
+];
+
+function StressTestCard(){
+  const app=useApp();
+  const [selected,setSelected]=useState(0);
+  const scenario=SCENARIOS[selected];
+  const currentValue=app.positionsValue;
+
+  const stressed=app.positions.map(p=>{
+    const drop=(scenario.drops[p.theme]??-25)/100;
+    const newPrice=p.currentPrice*(1+drop);
+    const newValue=newPrice*p.shares;
+    return{...p,newPrice,newValue,change:newValue-p.currentPrice*p.shares};
+  });
+  const stressedTotal=stressed.reduce((s,p)=>s+p.newValue,0);
+  const totalDrop=currentValue>0?(stressedTotal-currentValue)/currentValue*100:0;
+
+  return<div className="card" style={{marginBottom:12}}>
+    <div className="card-header"><span className="card-title">🔥 Stress Test</span><span style={{fontSize:11,color:'var(--text3)'}}>Scenario impact on portfolio</span></div>
+    <div className="divider"/>
+    {/* Scenario selector */}
+    <div style={{display:'flex',flexDirection:'column',gap:6,marginBottom:14}}>
+      {SCENARIOS.map((s,i)=><button key={i} onClick={()=>setSelected(i)} style={{padding:'8px 12px',borderRadius:8,border:`1px solid ${selected===i?s.color:' var(--border2)'}`,background:selected===i?s.color+'18':'var(--bg3)',color:selected===i?s.color:'var(--text2)',fontWeight:selected===i?700:400,fontSize:12,textAlign:'left',cursor:'pointer'}}>
+        <strong>{s.name}</strong> <span style={{opacity:.7}}>· {s.date}</span>
+      </button>)}
+    </div>
+    {/* Result */}
+    <div style={{background:'var(--bg3)',borderRadius:10,padding:14,marginBottom:12}}>
+      <div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}>
+        <div><div style={{fontSize:11,color:'var(--text3)'}}>Current Value</div><div style={{fontSize:18,fontWeight:800}}>${currentValue.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
+        <div style={{textAlign:'right'}}><div style={{fontSize:11,color:'var(--text3)'}}>After Scenario</div><div style={{fontSize:18,fontWeight:800,color:'var(--red)'}}>${stressedTotal.toLocaleString('en-US',{maximumFractionDigits:0})}</div></div>
+      </div>
+      <div style={{textAlign:'center',fontSize:24,fontWeight:900,color:'var(--red)',marginBottom:4}}>{totalDrop.toFixed(1)}%</div>
+      <div style={{textAlign:'center',fontSize:12,color:'var(--text3)'}}>Loss of ${Math.abs(stressedTotal-currentValue).toLocaleString('en-US',{maximumFractionDigits:0})}</div>
+    </div>
+    {/* Per position */}
+    <div style={{fontSize:11,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.4px',marginBottom:6}}>Per Position</div>
+    {stressed.map((p,i)=>{const pct=(scenario.drops[p.theme]??-25);return<div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0',borderBottom:'1px solid var(--border)',fontSize:12}}>
+      <span style={{fontWeight:700,width:50}}>{p.ticker}</span>
+      <span style={{color:'var(--text3)',flex:1}}>{p.theme}</span>
+      <span style={{color:'var(--red)',fontWeight:700,width:50,textAlign:'right'}}>{pct>0?'+':''}{pct}%</span>
+      <span style={{fontWeight:700,width:70,textAlign:'right'}}>${p.newValue.toLocaleString('en-US',{maximumFractionDigits:0})}</span>
+    </div>;})}
+  </div>;
+}
+
+// ── DCA Planner ───────────────────────────────────────────────────────────────
+function DCAPlanner(){
+  const app=useApp();
+  const [monthly,setMonthly]=useState(app.monthlyBudget||500);
+
+  const plan=useMemo(()=>{
+    if(!app.positions.length)return[];
+    const getScore=p=>{
+      const vol=app.volatility[p.ticker.toUpperCase()];
+      const pct=(p.currentPrice-p.buyPrice)/p.buyPrice*100;
+      let s=50;
+      // Signal: ADD = +30, HOLD = 0, TRIM/EXIT = -40
+      if(pct<=-12)s+=30;else if(pct<=-6)s+=20;else if(pct>=20)s-=30;else if(pct>=30)s-=40;
+      // Vol: low vol = good time to add (+15), high = risky (-10)
+      if(vol){if(vol.volPct<30)s+=15;else if(vol.volPct>75)s-=10;}
+      // Concentration: overweight themes get less
+      const themeCount=app.positions.filter(x=>x.theme===p.theme).length;
+      if(themeCount>=3)s-=10;
+      return Math.max(0,s);
+    };
+    const scores=app.positions.map(p=>({...p,score:getScore(p)}));
+    const totalScore=scores.reduce((s,p)=>s+p.score,0)||1;
+    return scores.map(p=>({...p,allocation:Math.round(p.score/totalScore*monthly),pct:Math.round(p.score/totalScore*100)})).sort((a,b)=>b.allocation-a.allocation);
+  },[app.positions,app.volatility,monthly,app.monthlyBudget]);
+
+  return<div className="card" style={{marginBottom:12}}>
+    <div className="card-header"><span className="card-title">💰 DCA Planner</span><span style={{fontSize:11,color:'var(--text3)'}}>Monthly buying plan</span></div>
+    <div className="divider"/>
+    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}>
+      <label style={{fontSize:12,color:'var(--text3)',whiteSpace:'nowrap'}}>Monthly budget $</label>
+      <input type="number" min="0" step="100" value={monthly} onChange={e=>setMonthly(Number(e.target.value))} style={{flex:1,padding:'6px 10px',fontSize:13}}/>
+    </div>
+    {plan.map((p,i)=><div key={i} style={{marginBottom:10}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+        <div style={{display:'flex',gap:6,alignItems:'center'}}>
+          <span style={{fontWeight:800,fontSize:13}}>{p.ticker}</span>
+          <span style={{fontSize:10,color:'var(--text3)'}}>{p.theme}</span>
+        </div>
+        <div style={{textAlign:'right'}}>
+          <span style={{fontWeight:800,fontSize:13,color:'var(--green)'}}>${p.allocation}</span>
+          <span style={{fontSize:10,color:'var(--text3)',marginLeft:4}}>{p.pct}%</span>
+        </div>
+      </div>
+      <div style={{height:5,background:'var(--bg4)',borderRadius:3}}>
+        <div style={{height:'100%',width:p.pct+'%',background:'var(--green)',borderRadius:3,transition:'width .4s'}}/>
+      </div>
+    </div>)}
+    <div style={{fontSize:10,color:'var(--text3)',marginTop:8,background:'var(--bg3)',borderRadius:6,padding:'6px 10px'}}>
+      Allocation weighted by signal strength + vol percentile. Positions with ADD signals and lower vol get more.
+    </div>
+  </div>;
+}
+
+// ── Price Alerts ──────────────────────────────────────────────────────────────
+function PriceAlertsCard(){
+  const app=useApp();
+  const [ticker,setTicker]=useState('');
+  const [target,setTarget]=useState('');
+  const [direction,setDirection]=useState('above');
+
+  const save=()=>{
+    if(!ticker||!target)return;
+    const alert={id:Date.now(),ticker:ticker.toUpperCase(),target:parseFloat(target),direction,createdAt:new Date().toISOString()};
+    const updated=[...app.priceAlerts,alert];
+    app.setPriceAlerts(updated);
+    localStorage.setItem('vh_price_alerts',JSON.stringify(updated));
+    setTicker('');setTarget('');
+  };
+
+  const remove=id=>{
+    const updated=app.priceAlerts.filter(a=>a.id!==id);
+    app.setPriceAlerts(updated);
+    localStorage.setItem('vh_price_alerts',JSON.stringify(updated));
+  };
+
+  return<div className="card" style={{marginBottom:12}}>
+    <div className="card-header"><span className="card-title">🎯 Price Alerts</span><span style={{fontSize:11,color:'var(--text3)'}}>{app.priceAlerts.length} active</span></div>
+    <div className="divider"/>
+    {/* Add new alert */}
+    <div style={{display:'flex',gap:6,marginBottom:12,flexWrap:'wrap'}}>
+      <input value={ticker} onChange={e=>setTicker(e.target.value.toUpperCase())} placeholder="Ticker" style={{flex:'0 0 70px',padding:'6px 8px',fontSize:12,textTransform:'uppercase'}}/>
+      <select value={direction} onChange={e=>setDirection(e.target.value)} style={{flex:'0 0 80px',padding:'6px 8px',fontSize:12}}>
+        <option value="above">Above</option>
+        <option value="below">Below</option>
+      </select>
+      <input type="number" value={target} onChange={e=>setTarget(e.target.value)} placeholder="$0.00" style={{flex:1,padding:'6px 8px',fontSize:12}}/>
+      <button className="btn btn-primary" style={{padding:'6px 14px',fontSize:12}} onClick={save} disabled={!ticker||!target}>+ Add</button>
+    </div>
+    {/* Active alerts */}
+    {app.priceAlerts.length===0&&<div style={{textAlign:'center',color:'var(--text3)',fontSize:12,padding:'12px 0'}}>No alerts set. Add one above.</div>}
+    {app.priceAlerts.map(a=>{
+      const q=app.quotes[a.ticker];
+      const current=q?.price;
+      const triggered=current&&(a.direction==='above'?current>=a.target:current<=a.target);
+      return<div key={a.id} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:triggered?'var(--green-bg)':'var(--bg3)',borderRadius:8,marginBottom:6,border:triggered?'1px solid var(--green)':'1px solid transparent'}}>
+        <div style={{flex:1}}>
+          <span style={{fontWeight:800,fontSize:13}}>{a.ticker}</span>
+          <span style={{fontSize:11,color:'var(--text3)',marginLeft:6}}>{a.direction} ${a.target}</span>
+          {current&&<span style={{fontSize:11,marginLeft:8,color:triggered?'var(--green)':'var(--text3)'}}>now ${current.toFixed(2)}{triggered?' ✓ HIT':''}</span>}
+        </div>
+        <button onClick={()=>remove(a.id)} style={{background:'none',border:'none',color:'var(--text3)',fontSize:16,cursor:'pointer',padding:'0 4px'}}>✕</button>
+      </div>;
+    })}
+  </div>;
+}
+
 // ─── FORECAST TAB ────────────────────────────────────────────────────────────
 // ─── STOCK ANALYZER ──────────────────────────────────────────────────────────
 function StockAnalyzer(){
@@ -2073,7 +2281,7 @@ function App(){
   const [showLanding,setShowLanding]=useState(()=>!localStorage.getItem('vh_onboarded'));
   const [demoMode,setDemoMode]=useState(false);
   const [onboarded,setOnboarded]=useState(()=>!!localStorage.getItem('vh_onboarded'));
-  const tabs=[{id:'dashboard',label:'Dashboard',icon:'dashboard'},{id:'intel',label:'Intel',icon:'zap'},{id:'regime',label:'Regime',icon:'regime'},{id:'signals',label:'Signals',icon:'signals'},{id:'portfolio',label:'Portfolio',icon:'portfolio'},{id:'watchlist',label:'Watchlist',icon:'watchlist'},{id:'markets',label:'Markets',icon:'markets'},{id:'forecast',label:'Analyze',icon:'forecast'}];
+  const tabs=[{id:'dashboard',label:'Dashboard',icon:'dashboard'},{id:'intel',label:'Intel',icon:'zap'},{id:'regime',label:'Regime',icon:'regime'},{id:'signals',label:'Signals',icon:'signals'},{id:'portfolio',label:'Portfolio',icon:'portfolio'},{id:'watchlist',label:'Watchlist',icon:'watchlist'},{id:'markets',label:'Markets',icon:'markets'},{id:'forecast',label:'Analyze',icon:'forecast'},{id:'insights',label:'Insights',icon:'insights'}];
   const [tab,setTab]=useState('dashboard');
 
   if(showLanding&&!onboarded&&!demoMode)return<LandingPage
@@ -2142,7 +2350,7 @@ function AppContent({tab,setTab,tabs,onboarded,setOnboarded,demoMode,onExitDemo}
   return<div className="app">
     {demoMode&&<DemoBanner onSetup={onExitDemo}/>}
     {app.notification&&<div style={{position:'fixed',top:demoMode?40:0,left:0,right:0,zIndex:200,padding:12,background:'linear-gradient(135deg,#b91c1c,#dc2626)',color:'#fff',fontSize:13,fontWeight:600,display:'flex',justifyContent:'space-between'}}><span>{app.notification.text}</span><button onClick={()=>app.setNotification(null)} style={{background:'none',border:'none',color:'#fff',fontWeight:700}}>✕</button></div>}
-    <div className="main" style={mainStyle}>{tab==='dashboard'&&<DashboardTab/>}{tab==='intel'&&<IntelTab/>}{tab==='regime'&&<RegimeTab/>}{tab==='signals'&&<SignalsTab/>}{tab==='portfolio'&&<PortfolioTab/>}{tab==='watchlist'&&<WatchlistTab/>}{tab==='markets'&&<MarketsTab/>}{tab==='forecast'&&<ForecastTab/>}</div>
+    <div className="main" style={mainStyle}>{tab==='dashboard'&&<DashboardTab/>}{tab==='intel'&&<IntelTab/>}{tab==='regime'&&<RegimeTab/>}{tab==='signals'&&<SignalsTab/>}{tab==='portfolio'&&<PortfolioTab/>}{tab==='watchlist'&&<WatchlistTab/>}{tab==='markets'&&<MarketsTab/>}{tab==='forecast'&&<ForecastTab/>}{tab==='insights'&&<InsightsTab/>}</div>
     <TabBar tab={tab} setTab={setTab} tabs={tabs}/>
     <button onClick={()=>setShowFeedback(true)} style={{position:'fixed',bottom:74,right:16,zIndex:100,background:'var(--blue)',color:'#fff',border:'none',borderRadius:24,padding:'8px 14px',fontSize:12,fontWeight:700,boxShadow:'0 4px 16px rgba(59,130,246,.4)',cursor:'pointer',display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:14}}>💬</span> Feedback</button>
     {showFeedback&&<FeedbackModal onClose={()=>setShowFeedback(false)}/>}
