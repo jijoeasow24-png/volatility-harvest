@@ -1,1 +1,6 @@
-{"name":"volatility-harvest","version":"4.0.0","private":true}
+{
+  "name": "volatility-harvest",
+  "version": "4.0.0",
+  "private": true,
+  "type": "module"
+}
