@@ -1855,6 +1855,53 @@ function App(){
     onExitDemo={()=>{setDemoMode(false);}}/></AppProvider>;
 }
 
+// ─── TAB BAR WITH MORE MENU ───────────────────────────────────────────────────
+const PRIMARY_TABS = ['dashboard','signals','portfolio','forecast'];
+
+function TabBar({tab, setTab, tabs}){
+  const [showMore, setShowMore] = useState(false);
+  const primary = tabs.filter(t => PRIMARY_TABS.includes(t.id));
+  const overflow = tabs.filter(t => !PRIMARY_TABS.includes(t.id));
+  const isOverflowActive = overflow.some(t => t.id === tab);
+
+  const handleSelect = (id) => { setTab(id); setShowMore(false); };
+
+  return<>
+    {/* More menu overlay */}
+    {showMore&&<div style={{position:'fixed',inset:0,zIndex:150,background:'rgba(0,0,0,.5)'}} onClick={()=>setShowMore(false)}>
+      <div style={{position:'absolute',bottom:60,left:0,right:0,background:'var(--bg2)',borderRadius:'16px 16px 0 0',padding:'12px 0 8px',boxShadow:'0 -8px 32px rgba(0,0,0,.4)'}} onClick={e=>e.stopPropagation()}>
+        <div style={{width:36,height:4,borderRadius:2,background:'var(--border2)',margin:'0 auto 12px'}}/>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:4,padding:'0 12px'}}>
+          {overflow.map(t=><button key={t.id} onClick={()=>handleSelect(t.id)}
+            style={{display:'flex',alignItems:'center',gap:10,padding:'12px 14px',borderRadius:10,border:'none',
+              background:tab===t.id?'var(--blue-bg)':'var(--bg3)',
+              color:tab===t.id?'var(--blue)':'var(--text2)',fontWeight:600,fontSize:13,cursor:'pointer'}}>
+            <Icon name={t.icon} size={18} color={tab===t.id?'var(--blue)':'var(--text3)'}/>
+            {t.label}
+          </button>)}
+        </div>
+      </div>
+    </div>}
+
+    {/* Tab bar */}
+    <div className="tab-bar">
+      {primary.map(t=><button key={t.id} className={`tab-btn ${tab===t.id?'active':''}`} onClick={()=>handleSelect(t.id)}>
+        <Icon name={t.icon} size={20} color={tab===t.id?'var(--blue)':'var(--text3)'}/>
+        <span>{t.label}</span>
+      </button>)}
+      {/* More button */}
+      <button className={`tab-btn ${isOverflowActive||showMore?'active':''}`} onClick={()=>setShowMore(v=>!v)}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={isOverflowActive||showMore?'var(--blue)':'var(--text3)'} strokeWidth="2">
+          <circle cx="5" cy="12" r="1.5" fill={isOverflowActive||showMore?'var(--blue)':'var(--text3)'}/>
+          <circle cx="12" cy="12" r="1.5" fill={isOverflowActive||showMore?'var(--blue)':'var(--text3)'}/>
+          <circle cx="19" cy="12" r="1.5" fill={isOverflowActive||showMore?'var(--blue)':'var(--text3)'}/>
+        </svg>
+        <span>{isOverflowActive ? tabs.find(t=>t.id===tab)?.label : 'More'}</span>
+      </button>
+    </div>
+  </>;
+}
+
 function AppContent({tab,setTab,tabs,onboarded,setOnboarded,demoMode,onExitDemo}){
   const app=useApp();
   const [showFeedback,setShowFeedback]=useState(false);
@@ -1864,7 +1911,7 @@ function AppContent({tab,setTab,tabs,onboarded,setOnboarded,demoMode,onExitDemo}
     {demoMode&&<DemoBanner onSetup={onExitDemo}/>}
     {app.notification&&<div style={{position:'fixed',top:demoMode?40:0,left:0,right:0,zIndex:200,padding:12,background:'linear-gradient(135deg,#b91c1c,#dc2626)',color:'#fff',fontSize:13,fontWeight:600,display:'flex',justifyContent:'space-between'}}><span>{app.notification.text}</span><button onClick={()=>app.setNotification(null)} style={{background:'none',border:'none',color:'#fff',fontWeight:700}}>✕</button></div>}
     <div className="main" style={mainStyle}>{tab==='dashboard'&&<DashboardTab/>}{tab==='intel'&&<IntelTab/>}{tab==='regime'&&<RegimeTab/>}{tab==='signals'&&<SignalsTab/>}{tab==='portfolio'&&<PortfolioTab/>}{tab==='watchlist'&&<WatchlistTab/>}{tab==='markets'&&<MarketsTab/>}{tab==='forecast'&&<ForecastTab/>}</div>
-    <div className="tab-bar">{tabs.map(t=><button key={t.id} className={`tab-btn ${tab===t.id?'active':''}`} onClick={()=>setTab(t.id)}><Icon name={t.icon} size={20} color={tab===t.id?'var(--blue)':'var(--text3)'}/><span>{t.label}</span></button>)}</div>
+    <TabBar tab={tab} setTab={setTab} tabs={tabs}/>
     <button onClick={()=>setShowFeedback(true)} style={{position:'fixed',bottom:74,right:16,zIndex:100,background:'var(--blue)',color:'#fff',border:'none',borderRadius:24,padding:'8px 14px',fontSize:12,fontWeight:700,boxShadow:'0 4px 16px rgba(59,130,246,.4)',cursor:'pointer',display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:14}}>💬</span> Feedback</button>
     {showFeedback&&<FeedbackModal onClose={()=>setShowFeedback(false)}/>}
   </div>;
