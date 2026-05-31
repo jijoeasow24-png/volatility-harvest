@@ -1786,10 +1786,179 @@ function ImportModal({onClose}){
 }
 
 // ─── INSIGHTS TAB ────────────────────────────────────────────────────────────
+// ── Smart Picks Universe ──────────────────────────────────────────────────────
+const STOCK_UNIVERSE=[
+  {ticker:'JNJ',  name:'Johnson & Johnson',  sector:'Healthcare'},
+  {ticker:'UNH',  name:'UnitedHealth',        sector:'Healthcare'},
+  {ticker:'LLY',  name:'Eli Lilly',           sector:'Healthcare'},
+  {ticker:'ABBV', name:'AbbVie',              sector:'Healthcare'},
+  {ticker:'MRK',  name:'Merck',               sector:'Healthcare'},
+  {ticker:'XLV',  name:'Healthcare ETF',      sector:'Healthcare'},
+  {ticker:'JPM',  name:'JPMorgan Chase',      sector:'Financial'},
+  {ticker:'V',    name:'Visa',                sector:'Financial'},
+  {ticker:'MA',   name:'Mastercard',          sector:'Financial'},
+  {ticker:'BAC',  name:'Bank of America',     sector:'Financial'},
+  {ticker:'BRK-B',name:'Berkshire Hathaway',  sector:'Financial'},
+  {ticker:'HD',   name:'Home Depot',          sector:'Consumer'},
+  {ticker:'COST', name:'Costco',              sector:'Consumer'},
+  {ticker:'MCD',  name:'McDonald\'s',         sector:'Consumer'},
+  {ticker:'WMT',  name:'Walmart',             sector:'Consumer'},
+  {ticker:'NKE',  name:'Nike',                sector:'Consumer'},
+  {ticker:'XOM',  name:'ExxonMobil',          sector:'Energy'},
+  {ticker:'CVX',  name:'Chevron',             sector:'Energy'},
+  {ticker:'COP',  name:'ConocoPhillips',      sector:'Energy'},
+  {ticker:'XLE',  name:'Energy ETF',          sector:'Energy'},
+  {ticker:'AAPL', name:'Apple',               sector:'Technology'},
+  {ticker:'META', name:'Meta Platforms',      sector:'Technology'},
+  {ticker:'AMD',  name:'AMD',                 sector:'Technology'},
+  {ticker:'TSLA', name:'Tesla',               sector:'Technology'},
+  {ticker:'CRM',  name:'Salesforce',          sector:'Technology'},
+  {ticker:'NFLX', name:'Netflix',             sector:'Communication'},
+  {ticker:'DIS',  name:'Walt Disney',         sector:'Communication'},
+  {ticker:'CAT',  name:'Caterpillar',         sector:'Industrials'},
+  {ticker:'HON',  name:'Honeywell',           sector:'Industrials'},
+  {ticker:'UPS',  name:'UPS',                 sector:'Industrials'},
+  {ticker:'GE',   name:'GE Aerospace',        sector:'Industrials'},
+  {ticker:'NEE',  name:'NextEra Energy',      sector:'Utilities'},
+  {ticker:'D',    name:'Dominion Energy',     sector:'Utilities'},
+  {ticker:'GLD',  name:'SPDR Gold',           sector:'Commodities'},
+  {ticker:'SLV',  name:'iShares Silver',      sector:'Commodities'},
+  {ticker:'TLT',  name:'20Y Treasury ETF',    sector:'Bonds'},
+  {ticker:'EFA',  name:'iShares Int\'l',      sector:'International'},
+  {ticker:'VWO',  name:'Emerging Markets',    sector:'International'},
+  {ticker:'VNQ',  name:'Real Estate ETF',     sector:'Real Estate'},
+  {ticker:'VTI',  name:'Total Market ETF',    sector:'Broad Market'},
+];
+
+function SmartPicksCard(){
+  const app=useApp();
+  const [loading,setLoading]=useState(false);
+  const [results,setResults]=useState([]);
+  const [progress,setProgress]=useState(0);
+  const [ran,setRan]=useState(false);
+
+  const run=async()=>{
+    const owned=new Set(app.positions.map(p=>p.ticker.toUpperCase()));
+    const userSectors=new Set(app.positions.map(p=>p.theme));
+    const regime=app.regime||'Not Assessed';
+    const isRiskOn=regime.toLowerCase().includes('risk-on')||regime.toLowerCase().includes('bull');
+
+    const candidates=STOCK_UNIVERSE.filter(s=>!owned.has(s.ticker.toUpperCase()));
+    setLoading(true);setResults([]);setProgress(0);setRan(true);
+
+    const all=[];
+    const BATCH=5;
+    for(let i=0;i<candidates.length;i+=BATCH){
+      const batch=candidates.slice(i,i+BATCH);
+      const res=await Promise.all(batch.map(async stock=>{
+        try{
+          const r=await fetch(`/api/analyze?ticker=${stock.ticker}`);
+          const d=await r.json();
+          if(d.error||!d.score)return null;
+
+          // Diversification bonus — reward sectors the user is missing
+          const missing=!userSectors.has(stock.sector);
+          const divBonus=missing?18:0;
+
+          // Regime adjustment
+          let regimeBonus=0;
+          const momentum=d.metrics?.ret20d||0;
+          if(isRiskOn&&momentum>3)regimeBonus=8;   // Risk-On: reward momentum
+          if(!isRiskOn&&['Bonds','Utilities','Commodities','Healthcare'].includes(stock.sector))regimeBonus=12; // Risk-Off: reward defensives
+          if(isRiskOn&&['Bonds','Utilities'].includes(stock.sector))regimeBonus=-10; // Risk-On: penalise defensives
+
+          const finalScore=Math.min(100,Math.max(0,d.score+divBonus+regimeBonus));
+
+          // Why recommended
+          const reasons=[];
+          if(missing)reasons.push(`Adds ${stock.sector} — sector missing from your portfolio`);
+          if(d.metrics?.volPct<35)reasons.push(`Low vol (${d.metrics.volPct}th pct) — cheap entry window`);
+          if(d.metrics?.pctFromMa200>0&&d.metrics?.pctFromMa50<0)reasons.push('Pulled back to MA50 within uptrend — classic entry');
+          if(d.metrics?.rsi>=40&&d.metrics?.rsi<=55)reasons.push(`RSI ${d.metrics.rsi} — neutral, not overbought`);
+          if(momentum>3&&momentum<12)reasons.push(`+${momentum.toFixed(1)}% 20d momentum — healthy trend`);
+          if(!missing)reasons.push(`Diversifies within ${stock.sector}`);
+
+          return{ticker:stock.ticker,name:d.name||stock.name,sector:stock.sector,score:finalScore,signal:d.signal,signalColor:d.signalColor,action:d.action,reasons:reasons.slice(0,3),metrics:d.metrics,expectedRange:d.expectedRange,current:d.current};
+        }catch{return null;}
+      }));
+      all.push(...res.filter(Boolean));
+      setProgress(Math.round(Math.min(100,(i+BATCH)/candidates.length*100)));
+    }
+
+    // Rank: top overall score, but ensure sector diversity (max 2 per sector)
+    const sectorCount={};
+    const top=all
+      .filter(r=>r.score>=42)
+      .sort((a,b)=>b.score-a.score)
+      .filter(r=>{sectorCount[r.sector]=(sectorCount[r.sector]||0)+1;return sectorCount[r.sector]<=2;})
+      .slice(0,6);
+
+    setResults(top);setLoading(false);
+  };
+
+  const fmt$=v=>v>=1000?'$'+(v/1000).toFixed(1)+'K':'$'+v.toFixed(2);
+
+  return<div className="card" style={{marginBottom:12}}>
+    <div className="card-header"><span className="card-title">🧠 Smart Picks</span><span style={{fontSize:11,color:'var(--text3)'}}>AI-ranked opportunities</span></div>
+    <div className="divider"/>
+
+    {!ran&&<>
+      <div style={{fontSize:12,color:'var(--text2)',marginBottom:12,lineHeight:1.6}}>
+        Scans {STOCK_UNIVERSE.length} stocks across all sectors. Scores each on entry quality, then boosts stocks that diversify your portfolio and match the current <strong>{app.regime||'regime'}</strong>.
+      </div>
+      <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:14}}>
+        {['Healthcare','Financial','Consumer','Energy','Industrials','International','Commodities'].map(s=>{
+          const owned=app.positions.some(p=>p.theme===s);
+          return<span key={s} style={{fontSize:10,padding:'3px 8px',borderRadius:12,background:owned?'var(--bg4)':'var(--green-bg)',color:owned?'var(--text3)':'var(--green)',fontWeight:700}}>{owned?'✓':'+' } {s}</span>;
+        })}
+      </div>
+      <button className="btn btn-primary btn-full" style={{padding:13,fontSize:14}} onClick={run}>🔍 Find Smart Picks →</button>
+    </>}
+
+    {loading&&<div style={{padding:'20px 0'}}>
+      <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:6}}><span style={{color:'var(--text3)'}}>Scanning universe…</span><span style={{fontWeight:700}}>{progress}%</span></div>
+      <div style={{height:6,background:'var(--bg4)',borderRadius:3}}><div style={{height:'100%',width:progress+'%',background:'var(--blue)',borderRadius:3,transition:'width .3s'}}/></div>
+      <div style={{fontSize:11,color:'var(--text3)',marginTop:8,textAlign:'center'}}>Analyzing {STOCK_UNIVERSE.length} stocks · This takes ~15 seconds</div>
+    </div>}
+
+    {ran&&!loading&&results.length===0&&<div style={{textAlign:'center',padding:'20px 0',color:'var(--text3)',fontSize:13}}>No strong setups found right now. Try again after a market move.</div>}
+
+    {results.map((r,i)=><div key={i} style={{marginBottom:10,background:'var(--bg3)',borderRadius:10,padding:12,border:`1px solid ${r.signalColor}33`}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
+        <div>
+          <span style={{fontSize:15,fontWeight:900}}>{r.ticker}</span>
+          <span style={{fontSize:11,color:'var(--text3)',marginLeft:6}}>{r.name}</span>
+          <div style={{marginTop:3}}><span style={{fontSize:10,background:'var(--blue-bg)',color:'var(--blue)',padding:'2px 6px',borderRadius:4,fontWeight:700}}>{r.sector}</span></div>
+        </div>
+        <div style={{textAlign:'right'}}>
+          <div style={{fontSize:22,fontWeight:900,color:r.signalColor,lineHeight:1}}>{r.score}</div>
+          <div style={{fontSize:9,color:'var(--text3)'}}>/ 100</div>
+          <div style={{background:r.signalColor,color:'#fff',borderRadius:4,padding:'2px 8px',fontSize:10,fontWeight:700,marginTop:3}}>{r.signal}</div>
+        </div>
+      </div>
+      {/* Expected range */}
+      {r.expectedRange&&<div style={{display:'flex',gap:8,fontSize:11,marginBottom:8,background:'var(--bg2)',borderRadius:6,padding:'6px 10px'}}>
+        <span style={{color:'var(--red)'}}>↓ {fmt$(r.expectedRange.low)}</span>
+        <span style={{color:'var(--text3)',flex:1,textAlign:'center'}}>Now {fmt$(r.current)}</span>
+        <span style={{color:'var(--green)'}}>↑ {fmt$(r.expectedRange.high)}</span>
+        <span style={{color:'var(--text3)'}}>±{r.expectedRange.movePct}% 30d</span>
+      </div>}
+      {/* Reasons */}
+      {r.reasons.map((reason,j)=><div key={j} style={{display:'flex',gap:6,marginBottom:3}}>
+        <span style={{color:'var(--green)',fontSize:11,flexShrink:0}}>✓</span>
+        <span style={{fontSize:11,color:'var(--text2)'}}>{reason}</span>
+      </div>)}
+    </div>)}
+
+    {ran&&!loading&&results.length>0&&<button className="btn btn-secondary btn-full" style={{marginTop:4,fontSize:12}} onClick={run}>↺ Refresh picks</button>}
+  </div>;
+}
+
 function InsightsTab(){
   const app=useApp();
   return<div className="fade-in">
     <div className="page-header"><div className="page-title">Insights</div></div>
+    <SmartPicksCard/>
     <BenchmarkCard/>
     <StressTestCard/>
     <DCAPlanner/>
