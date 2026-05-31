@@ -1551,6 +1551,127 @@ function ImportModal({onClose}){
 }
 
 // ─── FORECAST TAB ────────────────────────────────────────────────────────────
+// ─── STOCK ANALYZER ──────────────────────────────────────────────────────────
+function StockAnalyzer(){
+  const app=useApp();
+  const [ticker,setTicker]=useState('');
+  const [loading,setLoading]=useState(false);
+  const [result,setResult]=useState(null);
+  const [err,setErr]=useState(null);
+
+  const analyze=async()=>{
+    const t=ticker.trim().toUpperCase();
+    if(!t)return;
+    setLoading(true);setErr(null);setResult(null);
+    try{
+      const r=await fetch(`/api/analyze?ticker=${t}`);
+      const d=await r.json();
+      if(!r.ok||d.error)throw new Error(d.error||'Analysis failed');
+      setResult(d);
+    }catch(e){setErr(e.message);}
+    setLoading(false);
+  };
+
+  const fmt$=v=>v>=1000?'$'+(v/1000).toFixed(1)+'K':'$'+v.toFixed(2);
+  const pSign=v=>(v>=0?'+':'')+v.toFixed(1)+'%';
+
+  return<div style={{marginBottom:24}}>
+    <div style={{fontSize:17,fontWeight:800,marginBottom:4}}>🔍 Stock Analyzer</div>
+    <div style={{fontSize:12,color:'var(--text3)',marginBottom:12}}>Enter any ticker to get an entry quality score, expected move range, and key factors.</div>
+
+    {/* Input */}
+    <div style={{display:'flex',gap:8,marginBottom:12}}>
+      <input value={ticker} onChange={e=>setTicker(e.target.value.toUpperCase())}
+        onKeyDown={e=>e.key==='Enter'&&analyze()}
+        placeholder="e.g. AAPL, NVDA, QQQ…"
+        style={{flex:1,fontSize:15,fontWeight:700,textTransform:'uppercase',letterSpacing:1}}/>
+      <button className="btn btn-primary" style={{padding:'8px 18px',fontSize:14,whiteSpace:'nowrap'}} onClick={analyze} disabled={loading||!ticker.trim()}>
+        {loading?<Spinner/>:'Analyze →'}
+      </button>
+    </div>
+
+    {err&&<div style={{background:'var(--red-bg)',border:'1px solid #b91c1c44',borderRadius:8,padding:'10px 12px',fontSize:12,color:'var(--red)',marginBottom:12}}>{err}</div>}
+
+    {result&&<div className="fade-in">
+      {/* Score card */}
+      <div className="card" style={{border:`2px solid ${result.signalColor}44`,background:`${result.signalColor}08`,marginBottom:10}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+          <div>
+            <div style={{fontSize:20,fontWeight:900}}>{result.ticker}</div>
+            <div style={{fontSize:11,color:'var(--text3)'}}>{result.name}</div>
+          </div>
+          <div style={{textAlign:'right'}}>
+            <div style={{fontSize:28,fontWeight:900,color:result.signalColor,lineHeight:1}}>{result.score}</div>
+            <div style={{fontSize:9,color:'var(--text3)'}}>out of 100</div>
+          </div>
+        </div>
+        {/* Signal badge */}
+        <div style={{display:'inline-block',background:result.signalColor,color:'#fff',borderRadius:6,padding:'4px 12px',fontSize:12,fontWeight:800,marginBottom:10}}>{result.signal}</div>
+        {/* Score breakdown bar */}
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:4,marginBottom:10}}>
+          {[['Vol',result.components.volScore,25,'var(--purple)'],['Momentum',result.components.momScore,25,'var(--blue)'],['RSI',result.components.rsiScore,25,'var(--cyan)'],['Trend',result.components.trendScore,25,'var(--green)']].map(([label,val,max,color])=>
+            <div key={label} style={{textAlign:'center'}}>
+              <div style={{fontSize:9,color:'var(--text3)',marginBottom:3}}>{label}</div>
+              <div style={{height:4,background:'var(--bg4)',borderRadius:2,marginBottom:2}}>
+                <div style={{height:'100%',width:(val/max*100)+'%',background:color,borderRadius:2}}/>
+              </div>
+              <div style={{fontSize:10,fontWeight:700}}>{val}/{max}</div>
+            </div>
+          )}
+        </div>
+        {/* Action */}
+        <div style={{fontSize:12,color:'var(--text2)',lineHeight:1.5,background:'var(--bg3)',borderRadius:6,padding:'8px 10px'}}>{result.action}</div>
+      </div>
+
+      {/* Expected range */}
+      <div className="card" style={{marginBottom:10}}>
+        <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>📐 Expected 30-Day Price Range <span style={{fontSize:10,color:'var(--text3)',fontWeight:400}}>(±1σ · ~68% of outcomes)</span></div>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+          <div style={{textAlign:'center',flex:1}}>
+            <div style={{fontSize:10,color:'var(--red)',fontWeight:700,marginBottom:2}}>LOW</div>
+            <div style={{fontSize:18,fontWeight:900,color:'var(--red)'}}>{fmt$(result.expectedRange.low)}</div>
+          </div>
+          <div style={{textAlign:'center',flex:1}}>
+            <div style={{fontSize:10,color:'var(--text3)',fontWeight:700,marginBottom:2}}>NOW</div>
+            <div style={{fontSize:18,fontWeight:900}}>{fmt$(result.current)}</div>
+          </div>
+          <div style={{textAlign:'center',flex:1}}>
+            <div style={{fontSize:10,color:'var(--green)',fontWeight:700,marginBottom:2}}>HIGH</div>
+            <div style={{fontSize:18,fontWeight:900,color:'var(--green)'}}>{fmt$(result.expectedRange.high)}</div>
+          </div>
+        </div>
+        {/* Range bar */}
+        <div style={{position:'relative',height:8,background:'linear-gradient(to right, var(--red-bg), var(--bg3), var(--green-bg))',borderRadius:4,marginBottom:6}}>
+          <div style={{position:'absolute',left:'50%',top:-2,width:4,height:12,background:'var(--text)',borderRadius:2,transform:'translateX(-50%)'}}/>
+        </div>
+        <div style={{textAlign:'center',fontSize:11,color:'var(--text3)'}}>±{result.expectedRange.movePct}% expected move · {result.metrics.annualVol}% annual vol ({result.metrics.volPct}th pct)</div>
+      </div>
+
+      {/* Key factors */}
+      <div className="card" style={{marginBottom:10}}>
+        <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>📋 Key Factors</div>
+        {result.factors.map((f,i)=><div key={i} style={{display:'flex',gap:8,alignItems:'flex-start',marginBottom:6}}>
+          <span style={{color:f.bull?'var(--green)':'var(--red)',fontSize:12,marginTop:1,flexShrink:0}}>{f.bull?'✓':'✗'}</span>
+          <span style={{fontSize:12,color:'var(--text2)'}}>{f.text}</span>
+        </div>)}
+      </div>
+
+      {/* Metrics grid */}
+      <div className="card">
+        <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>📊 Metrics</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,fontSize:12}}>
+          <div style={{background:'var(--bg3)',borderRadius:6,padding:'6px 10px'}}><span style={{color:'var(--text3)'}}>RSI(14) </span><strong style={{color:result.metrics.rsi>70?'var(--red)':result.metrics.rsi<30?'var(--green)':'var(--text)'}}>{result.metrics.rsi}</strong></div>
+          <div style={{background:'var(--bg3)',borderRadius:6,padding:'6px 10px'}}><span style={{color:'var(--text3)'}}>vs MA50 </span><strong style={{color:result.metrics.pctFromMa50>=0?'var(--green)':'var(--red)'}}>{pSign(result.metrics.pctFromMa50)}</strong></div>
+          {result.metrics.pctFromMa200!==null&&<div style={{background:'var(--bg3)',borderRadius:6,padding:'6px 10px'}}><span style={{color:'var(--text3)'}}>vs MA200 </span><strong style={{color:result.metrics.pctFromMa200>=0?'var(--green)':'var(--red)'}}>{pSign(result.metrics.pctFromMa200)}</strong></div>}
+          <div style={{background:'var(--bg3)',borderRadius:6,padding:'6px 10px'}}><span style={{color:'var(--text3)'}}>20d return </span><strong style={{color:result.metrics.ret20d>=0?'var(--green)':'var(--red)'}}>{pSign(result.metrics.ret20d??0)}</strong></div>
+          <div style={{background:'var(--bg3)',borderRadius:6,padding:'6px 10px'}}><span style={{color:'var(--text3)'}}>52W pos </span><strong>{result.metrics.pos52}%</strong></div>
+          <div style={{background:'var(--bg3)',borderRadius:6,padding:'6px 10px'}}><span style={{color:'var(--text3)'}}>Ann vol </span><strong>{result.metrics.annualVol}%</strong></div>
+        </div>
+      </div>
+    </div>}
+  </div>;
+}
+
 function ForecastTab(){
   const app=useApp();
   const startValue=app.positions.reduce((s,p)=>s+(p.currentPrice*p.shares),0)||10000;
@@ -1600,7 +1721,10 @@ function ForecastTab(){
   const yTicks=Array.from({length:gridVals+1},(_,i)=>minV+(range/gridVals)*i);
 
   return<div style={{paddingBottom:8}}>
-    <div className="page-header"><div className="page-title">Forecast</div></div>
+    <div className="page-header"><div className="page-title">Analyze</div></div>
+    <StockAnalyzer/>
+    <div style={{height:1,background:'var(--border)',margin:'4px 0 16px'}}/>
+    <div style={{fontSize:14,fontWeight:800,marginBottom:12,color:'var(--text2)'}}>📈 Portfolio Growth Forecast</div>
 
     {/* Controls */}
     <div className="card" style={{marginBottom:10}}>
@@ -1717,7 +1841,7 @@ function App(){
   const [showLanding,setShowLanding]=useState(()=>!localStorage.getItem('vh_onboarded'));
   const [demoMode,setDemoMode]=useState(false);
   const [onboarded,setOnboarded]=useState(()=>!!localStorage.getItem('vh_onboarded'));
-  const tabs=[{id:'dashboard',label:'Dashboard',icon:'dashboard'},{id:'intel',label:'Intel',icon:'zap'},{id:'regime',label:'Regime',icon:'regime'},{id:'signals',label:'Signals',icon:'signals'},{id:'portfolio',label:'Portfolio',icon:'portfolio'},{id:'watchlist',label:'Watchlist',icon:'watchlist'},{id:'markets',label:'Markets',icon:'markets'},{id:'forecast',label:'Forecast',icon:'forecast'}];
+  const tabs=[{id:'dashboard',label:'Dashboard',icon:'dashboard'},{id:'intel',label:'Intel',icon:'zap'},{id:'regime',label:'Regime',icon:'regime'},{id:'signals',label:'Signals',icon:'signals'},{id:'portfolio',label:'Portfolio',icon:'portfolio'},{id:'watchlist',label:'Watchlist',icon:'watchlist'},{id:'markets',label:'Markets',icon:'markets'},{id:'forecast',label:'Analyze',icon:'forecast'}];
   const [tab,setTab]=useState('dashboard');
 
   if(showLanding&&!onboarded&&!demoMode)return<LandingPage
