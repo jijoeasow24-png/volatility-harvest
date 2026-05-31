@@ -1407,6 +1407,7 @@ function FeedbackModal({onClose}){
 // ─── IMPORT FROM SCREENSHOT ─────────────────────────────────────────────────
 function ImportModal({onClose}){
   const app=useApp();
+  const [mode,setMode]=useState('csv'); // csv | screenshot
   const [step,setStep]=useState('upload'); // upload | ready | parsing | review | done
   const [imgData,setImgData]=useState(null);
   const [imgMime,setImgMime]=useState('image/jpeg');
@@ -1414,6 +1415,59 @@ function ImportModal({onClose}){
   const [parsed,setParsed]=useState([]);
   const [err,setErr]=useState(null);
   const fileRef=useRef(null);
+  const csvRef=useRef(null);
+
+  // ── CSV parsing ────────────────────────────────────────────────────────────
+  const parseCSV=text=>{
+    const lines=text.trim().split(/\r?\n/).filter(l=>l.trim());
+    if(lines.length<2)throw new Error('CSV needs at least a header row and one data row');
+    // Parse a single CSV line handling quoted fields
+    const parseLine=line=>{const cols=[];let cur='',inQ=false;for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'){inQ=!inQ;}else if(c===','&&!inQ){cols.push(cur.trim());cur='';}else{cur+=c;}}cols.push(cur.trim());return cols;};
+    const headers=parseLine(lines[0]).map(h=>h.replace(/"/g,'').toLowerCase().trim());
+    // Column detection — fuzzy match common names
+    const find=(keys)=>{for(const k of keys){const i=headers.findIndex(h=>h.includes(k));if(i>=0)return i;}return -1;};
+    const iT=find(['ticker','symbol','stock','scrip']);
+    const iN=find(['name','company','description','security']);
+    const iB=find(['buyprice','buy price','avgcost','avg cost','averageprice','average price','costbasis','cost basis','price paid','purchase']);
+    const iS=find(['shares','quantity','qty','units','amount']);
+    const iC=find(['currentprice','current price','market price','last price','lastprice','mktprice']);
+    const iR=find(['role']);
+    const iT2=find(['theme']);
+    if(iT<0)throw new Error('Could not find a Ticker column. Make sure your CSV has a column named "Ticker" or "Symbol".');
+    if(iS<0)throw new Error('Could not find a Shares column. Make sure your CSV has a column named "Shares" or "Quantity".');
+    if(iB<0)throw new Error('Could not find a Buy Price column. Make sure your CSV has a column named "BuyPrice", "Avg Cost", or "Average Price".');
+    const existing=new Set(app.positions.map(p=>p.ticker.toUpperCase()));
+    const positions=[];
+    for(let i=1;i<lines.length;i++){
+      const cols=parseLine(lines[i]);
+      const ticker=(cols[iT]||'').replace(/"/g,'').trim().toUpperCase();
+      if(!ticker)continue;
+      const shares=parseFloat((cols[iS]||'').replace(/[,$"]/g,''));
+      const buyPrice=parseFloat((cols[iB]||'').replace(/[,$"]/g,''));
+      if(!ticker||isNaN(shares)||shares<=0||isNaN(buyPrice)||buyPrice<=0)continue;
+      const currentPrice=iC>=0?parseFloat((cols[iC]||'').replace(/[,$"]/g,''))||buyPrice:buyPrice;
+      const name=iN>=0?(cols[iN]||'').replace(/"/g,'').trim()||ticker:ticker;
+      const role=iR>=0&&['Core','Satellite','Hedge'].includes(cols[iR])?cols[iR]:'Core';
+      const theme=iT2>=0?cols[iT2]||'Technology':'Technology';
+      positions.push({ticker,name,shares,buyPrice,currentPrice,role,theme,skip:existing.has(ticker)});
+    }
+    if(positions.length===0)throw new Error('No valid positions found in CSV. Check that ticker, shares, and buy price columns have data.');
+    return positions;
+  };
+
+  const handleCSVFile=e=>{
+    const file=e.target.files[0];if(!file)return;
+    setErr(null);
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const positions=parseCSV(ev.target.result);
+        setParsed(positions);
+        setStep('review');
+      }catch(ex){setErr(ex.message);}
+    };
+    reader.readAsText(file);
+  };
 
   const handleFile=e=>{
     const file=e.target.files[0];if(!file)return;
@@ -1464,18 +1518,39 @@ function ImportModal({onClose}){
         {step==='done'&&<div style={{textAlign:'center',padding:'32px 0'}}>
           <div style={{fontSize:48,marginBottom:12}}>✅</div>
           <div style={{fontSize:18,fontWeight:800,marginBottom:6}}>Positions added!</div>
-          <div style={{fontSize:13,color:'var(--text3)',marginBottom:24}}>{toAdd} position{toAdd!==1?'s':''} imported from your screenshot.</div>
+          <div style={{fontSize:13,color:'var(--text3)',marginBottom:24}}>{toAdd} position{toAdd!==1?'s':''} imported successfully.</div>
           <button className="btn btn-primary btn-full" onClick={onClose}>Back to Portfolio</button>
         </div>}
 
         {/* HEADER */}
-        {step!=='done'&&<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-          <div><div style={{fontSize:17,fontWeight:800}}>📷 Import from Screenshot</div><div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>Robinhood · IBKR · Schwab · eToro · any broker</div></div>
+        {step!=='done'&&<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+          <div style={{fontSize:17,fontWeight:800}}>📥 Import Positions</div>
           <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text3)',fontSize:20,cursor:'pointer'}}>✕</button>
         </div>}
 
-        {/* UPLOAD / READY */}
-        {(step==='upload'||step==='ready')&&<>
+        {/* MODE SELECTOR */}
+        {step!=='done'&&step!=='review'&&<div style={{display:'flex',gap:6,marginBottom:14,background:'var(--bg3)',borderRadius:10,padding:4}}>
+          {[['csv','📄 CSV File'],['screenshot','📷 Screenshot']].map(([m,label])=>
+            <button key={m} onClick={()=>{setMode(m);setStep('upload');setErr(null);setImgData(null);setImgPreview(null);}} style={{flex:1,padding:'7px 0',borderRadius:7,border:'none',fontWeight:700,fontSize:13,cursor:'pointer',background:mode===m?'var(--bg2)':'transparent',color:mode===m?'var(--text)':'var(--text3)',boxShadow:mode===m?'0 1px 4px rgba(0,0,0,.2)':''}}>{label}</button>
+          )}
+        </div>}
+
+        {/* CSV UPLOAD */}
+        {mode==='csv'&&(step==='upload'||step==='ready')&&<>
+          <input ref={csvRef} type="file" accept=".csv,text/csv" onChange={handleCSVFile} style={{display:'none'}}/>
+          <div onClick={()=>csvRef.current?.click()} style={{border:'2px dashed var(--border2)',borderRadius:12,padding:'32px 20px',textAlign:'center',cursor:'pointer',marginBottom:12}}>
+            <div style={{fontSize:36,marginBottom:8}}>📄</div>
+            <div style={{fontWeight:700,marginBottom:4}}>Tap to choose CSV file</div>
+            <div style={{fontSize:12,color:'var(--text3)'}}>Export from Excel, Google Sheets, or your broker</div>
+          </div>
+          {err&&<div style={{background:'var(--red-bg)',border:'1px solid #b91c1c44',borderRadius:8,padding:'10px 12px',marginBottom:12,fontSize:12,color:'var(--red)'}}>{err}</div>}
+          <div style={{fontSize:11,color:'var(--text3)',background:'var(--bg3)',borderRadius:8,padding:'8px 10px'}}>
+            💡 CSV needs columns: <strong>Ticker</strong>, <strong>Shares</strong>, <strong>BuyPrice</strong> (or Avg Cost). Extra columns like Name, Role, Theme are optional.
+          </div>
+        </>}
+
+        {/* SCREENSHOT UPLOAD / READY */}
+        {mode==='screenshot'&&(step==='upload'||step==='ready')&&<>
           <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{display:'none'}}/>
           {!imgPreview
             ?<div onClick={()=>fileRef.current?.click()} style={{border:'2px dashed var(--border2)',borderRadius:12,padding:'36px 20px',textAlign:'center',cursor:'pointer',marginBottom:12}}>
@@ -1542,7 +1617,7 @@ function ImportModal({onClose}){
           <button className="btn btn-primary btn-full" style={{padding:14,fontSize:15}} onClick={addAll} disabled={toAdd===0}>
             Add {toAdd} Position{toAdd!==1?'s':''} →
           </button>
-          <button className="btn btn-secondary btn-full" style={{marginTop:8,fontSize:13}} onClick={()=>{setImgData(null);setImgPreview(null);setStep('upload');}}>Try Different Screenshot</button>
+          <button className="btn btn-secondary btn-full" style={{marginTop:8,fontSize:13}} onClick={()=>{setImgData(null);setImgPreview(null);setParsed([]);setStep('upload');}}>← Try Different File</button>
         </>}
 
       </div>
