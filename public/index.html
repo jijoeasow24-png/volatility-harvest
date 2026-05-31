@@ -140,6 +140,27 @@ const SignalBadge=({signal,compact})=><span className="badge" style={{background
 const RegimeBadge=({regime})=><span className="badge" style={{background:REGIMES[regime].color,color:'#fff'}}>{REGIMES[regime].emoji} {regime}</span>;
 const Toggle=({value,onChange})=><button className={`toggle ${value?'on':''}`} onClick={()=>onChange(!value)}/>;
 const Spinner=()=><span className="spin" style={{display:'inline-block',width:16,height:16,border:'2px solid var(--border2)',borderTopColor:'var(--blue)',borderRadius:'50%'}}/>;
+
+// VolStrip: compact volatility row shown on each position card
+function VolStrip({vol}){
+  const pct=vol.volPct;
+  const color=pct>=80?'var(--red)':pct>=60?'var(--orange)':pct<=20?'var(--green)':'var(--text3)';
+  const trendArrow=vol.volTrend==='rising'?'↑':vol.volTrend==='falling'?'↓':'→';
+  return<div style={{marginTop:7,paddingTop:7,borderTop:'1px solid var(--border)'}}>
+    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}}>
+      <span style={{fontSize:10,color:'var(--text3)',fontWeight:600,textTransform:'uppercase',letterSpacing:'.4px'}}>Vol · EWMA</span>
+      <span style={{fontSize:10,fontWeight:800,color}}>{vol.annualVol}% ann · {vol.volLabel} <span style={{fontSize:9}}>{trendArrow}</span></span>
+    </div>
+    <div style={{height:4,background:'var(--bg4)',borderRadius:2,marginBottom:5,position:'relative'}}>
+      <div style={{position:'absolute',left:0,top:0,height:'100%',width:pct+'%',borderRadius:2,
+        background:pct>=80?'var(--red)':pct>=60?'var(--orange)':pct<=30?'var(--green)':'var(--blue)',transition:'width .4s'}}/>
+    </div>
+    <div style={{display:'flex',justifyContent:'space-between',fontSize:10,color:'var(--text3)'}}>
+      <span>±{vol.move10?.pct}% expected 10d</span>
+      <span style={{color,fontWeight:700}}>{pct}th pct</span>
+    </div>
+  </div>;
+}
 function Sparkline({data,width=80,height=24}){if(!data||data.length<2)return null;const p=data.map(d=>d.c);const mn=Math.min(...p),mx=Math.max(...p),rng=mx-mn||1;const pts=p.map((v,i)=>`${(i/(p.length-1))*width},${height-((v-mn)/rng)*height}`).join(' ');const c=p[p.length-1]>=p[0]?'var(--green)':'var(--red)';return <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}><polyline points={pts} fill="none" stroke={c} strokeWidth="1.5" strokeLinejoin="round"/></svg>;}
 function RangeBar52({low,high,current}){if(!low||!high||!current)return null;const pct=Math.min(100,Math.max(0,((current-low)/(high-low||1))*100));return<div><div style={{display:'flex',justifyContent:'space-between',fontSize:10,color:'var(--text3)',marginBottom:2}}><span>52W: ${low.toFixed(0)}</span><span>${high.toFixed(0)}</span></div><div className="range-bar"><div className="range-fill" style={{width:pct+'%'}}/><div className="range-dot" style={{left:pct+'%'}}/></div></div>;}
 
@@ -153,7 +174,7 @@ function AppProvider({children,demoMode=false}){
   const [lastRegimeCheck,setLastRegimeCheck]=useState(null);
   const [autoRegimeData,setAutoRegimeData]=useState(null); // NEW: live indicator data
   const [autoRegimeLoading,setAutoRegimeLoading]=useState(false);
-  const [quotes,setQuotes]=useState({});const [sparklines,setSparklines]=useState({});const [technicals,setTechnicals]=useState({});
+  const [quotes,setQuotes]=useState({});const [sparklines,setSparklines]=useState({});const [technicals,setTechnicals]=useState({});const [volatility,setVolatility]=useState({});
   const [isRefreshing,setIsRefreshing]=useState(false);const [lastRefresh,setLastRefresh]=useState(null);const [refreshError,setRefreshError]=useState(null);
   const [monthlyHistory,setMonthlyHistory]=useState([]);const [actionChecks,setActionChecks]=useState({});
   const [notification,setNotification]=useState(null);
@@ -205,7 +226,7 @@ function AppProvider({children,demoMode=false}){
   const refreshPrices=useCallback(async()=>{
     if(positions.length===0||isRefreshing)return;
     setIsRefreshing(true);setRefreshError(null);
-    try{const tickers=positions.map(p=>p.ticker).join(',');const [qR,sR,tR]=await Promise.all([fetch(`/api/quotes?tickers=${tickers}`),fetch(`/api/sparkline?tickers=${tickers}`),fetch(`/api/technical?tickers=${tickers}`)]);const qD=await qR.json();const sD=await sR.json();const tD=await tR.json().catch(()=>({}));if(Object.keys(qD).length===0)throw new Error('No data');setQuotes(qD);setSparklines(sD);setTechnicals(tD);setPositions(prev=>prev.map(p=>{const q=qD[p.ticker.toUpperCase()];return q?{...p,currentPrice:q.price}:p;}));setLastRefresh(new Date());
+    try{const tickers=positions.map(p=>p.ticker).join(',');const [qR,sR,tR,vR]=await Promise.all([fetch(`/api/quotes?tickers=${tickers}`),fetch(`/api/sparkline?tickers=${tickers}`),fetch(`/api/technical?tickers=${tickers}`),fetch(`/api/volatility?tickers=${tickers}`)]);const qD=await qR.json();const sD=await sR.json();const tD=await tR.json().catch(()=>({}));const vD=await vR.json().catch(()=>({}));if(Object.keys(qD).length===0)throw new Error('No data');setQuotes(qD);setSparklines(sD);setTechnicals(tD);setVolatility(vD);setPositions(prev=>prev.map(p=>{const q=qD[p.ticker.toUpperCase()];return q?{...p,currentPrice:q.price}:p;}));setLastRefresh(new Date());
     const exits=positions.filter(p=>{const q=qD[p.ticker.toUpperCase()];if(!q)return false;const pct=(q.price-p.buyPrice)/p.buyPrice;return pct<=ROLES[p.role]?.stopLoss;});
     if(exits.length>0)setNotification({type:'danger',text:`⚠️ STOP-LOSS on ${exits.map(p=>p.ticker).join(', ')}!`});
     }catch(e){setRefreshError('Price update failed');}setIsRefreshing(false);
@@ -222,7 +243,7 @@ function AppProvider({children,demoMode=false}){
   const toggleActionCheck=(key)=>setActionChecks(prev=>({...prev,[key]:!prev[key]}));
   const updateBudget=(v)=>{setMonthlyBudget(v);localStorage.setItem('vh_monthly_budget',v.toString());};
 
-  return<AppContext.Provider value={{theme,toggleTheme,positions,setPositions,portfolioPeak,setPeak,portfolioTotal,regime,setRegime,regimeAnswers,setRegimeAnswers,lastRegimeCheck,setLastRegimeCheck,autoRegimeData,autoRegimeLoading,fetchAutoRegime,quotes,sparklines,technicals,isRefreshing,lastRefresh,refreshError,refreshPrices,positionsValue,positionsCost,totalPnL,totalPnLPct,drawdown,circuitLevel,actionableSignals,addPosition,updatePosition,deletePosition,resetPositions,monthlyHistory,actionChecks,toggleActionCheck,notification,setNotification,monthlyBudget,updateBudget,demoMode}}>{children}</AppContext.Provider>;
+  return<AppContext.Provider value={{theme,toggleTheme,positions,setPositions,portfolioPeak,setPeak,portfolioTotal,regime,setRegime,regimeAnswers,setRegimeAnswers,lastRegimeCheck,setLastRegimeCheck,autoRegimeData,autoRegimeLoading,fetchAutoRegime,quotes,sparklines,technicals,volatility,isRefreshing,lastRefresh,refreshError,refreshPrices,positionsValue,positionsCost,totalPnL,totalPnLPct,drawdown,circuitLevel,actionableSignals,addPosition,updatePosition,deletePosition,resetPositions,monthlyHistory,actionChecks,toggleActionCheck,notification,setNotification,monthlyBudget,updateBudget,demoMode}}>{children}</AppContext.Provider>;
 }
 const useApp=()=>useContext(AppContext);
 
@@ -773,7 +794,7 @@ function SignalsTab(){
   const sorted=useMemo(()=>{const order=['EXIT — STOP LOSS','TRIM STRONG','TRIM','ADD STRONG','ADD','HOLD'];const list=[...app.positions];if(sortBy==='signal')list.sort((a,b)=>order.indexOf(getSignal(a).name)-order.indexOf(getSignal(b).name));else if(sortBy==='pnl')list.sort((a,b)=>Math.abs(getPnlPct(b))-Math.abs(getPnlPct(a)));else list.sort((a,b)=>a.ticker.localeCompare(b.ticker));return list;},[app.positions,sortBy]);
   if(selected)return<PositionDetail pos={selected} onBack={()=>setSelected(null)}/>;
   return<div className="fade-in"><div className="page-header"><div className="page-title">Trade Signals</div><button className="refresh-btn" onClick={()=>setShowAdd(true)}><Icon name="plus" size={14}/> Add</button></div>{app.circuitLevel.name==='HARD STOP'&&<div className="card" style={{background:'var(--red-bg)',borderColor:'#b91c1c44',marginBottom:12}}><div style={{fontSize:12,fontWeight:800,color:'#f87171',marginBottom:4}}>⛔ HARD STOP Active</div><div style={{fontSize:12,color:'var(--red)'}}>Only act on EXIT signals. ADD and TRIM signals are suspended until circuit breaker clears (SPY holds 50-day MA for 2 consecutive weeks).</div></div>}<div style={{display:'flex',gap:6,marginBottom:12}}>{['signal','pnl','name'].map(s=><button key={s} className={`chip ${sortBy===s?'active':''}`} onClick={()=>setSortBy(s)}>{s==='signal'?'Signal':s==='pnl'?'P&L %':'Name'}</button>)}</div>
-  {sorted.map(pos=>{const sig=getSignal(pos);const pct=getPnlPct(pos);const tech=app.technicals[pos.ticker.toUpperCase()];const rrp=calcRR(pos,ROLES[pos.role]);const score=calcBuyScore(tech,app.regime,app.circuitLevel.name,rrp);const sl=scoreLabel(score);return<div key={pos.id} className="card" style={{cursor:'pointer',padding:12}} onClick={()=>setSelected(pos)}>
+  {sorted.map(pos=>{const sig=getSignal(pos);const pct=getPnlPct(pos);const tech=app.technicals[pos.ticker.toUpperCase()];const vol=app.volatility[pos.ticker.toUpperCase()];const rrp=calcRR(pos,ROLES[pos.role]);const score=calcBuyScore(tech,app.regime,app.circuitLevel.name,rrp);const sl=scoreLabel(score);return<div key={pos.id} className="card" style={{cursor:'pointer',padding:12}} onClick={()=>setSelected(pos)}>
     <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
       <div style={{flex:1}}><div style={{display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:15,fontWeight:800}}>{pos.ticker}</span><RoleBadge role={pos.role}/></div><div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>{pos.name}</div></div>
       <Sparkline data={app.sparklines[pos.ticker.toUpperCase()]} width={60} height={20}/>
@@ -784,6 +805,7 @@ function SignalsTab(){
       <MaBadge pctFromMa50={tech.pctFromMa50}/>
       {score!==null&&<span style={{fontSize:10,fontWeight:800,color:sl.color,background:sl.bg,borderRadius:4,padding:'2px 8px',marginLeft:'auto'}}>Setup {score}/100 · {sl.label}</span>}
     </div>}
+    {vol&&<VolStrip vol={vol}/>}
   </div>;})}
   {showAdd&&<PositionModal onClose={()=>setShowAdd(false)} position={null}/>}</div>;
 }
@@ -815,6 +837,36 @@ function PositionDetail({pos,onBack}){
     </div>
 
     {q&&q.fiftyTwoWeekLow&&<div className="card"><RangeBar52 low={q.fiftyTwoWeekLow} high={q.fiftyTwoWeekHigh} current={pos.currentPrice}/></div>}
+
+    {/* ── Volatility Detail Card ── */}
+    {app.volatility[pos.ticker.toUpperCase()]&&(()=>{const vol=app.volatility[pos.ticker.toUpperCase()];const pct=vol.volPct;const color=pct>=80?'var(--red)':pct>=60?'var(--orange)':pct<=20?'var(--green)':'var(--blue)';
+    return<div className="card">
+      <div className="card-header"><span className="card-title">📊 Volatility Forecast</span><span style={{fontSize:11,fontWeight:800,color,background:color+'20',padding:'2px 8px',borderRadius:4}}>{vol.volLabel} · {pct}th pct</span></div>
+      <div className="divider"/>
+      <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:12}}>
+        <span style={{color:'var(--text3)'}}>Annual vol (EWMA)</span><strong>{vol.annualVol}%</strong>
+      </div>
+      <div style={{height:6,background:'var(--bg4)',borderRadius:3,marginBottom:12,position:'relative'}}>
+        <div style={{position:'absolute',left:0,top:0,height:'100%',width:pct+'%',borderRadius:3,background:color}}/>
+        <div style={{position:'absolute',left:'20%',top:-3,width:1,height:12,background:'var(--border2)'}}/>
+        <div style={{position:'absolute',left:'80%',top:-3,width:1,height:12,background:'var(--border2)'}}/>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:10}}>
+        {[{n:5,d:vol.move5},{n:10,d:vol.move10},{n:20,d:vol.move20}].map(({n,d})=><div key={n} style={{background:'var(--bg3)',borderRadius:8,padding:'8px 6px',textAlign:'center'}}>
+          <div style={{fontSize:10,color:'var(--text3)',marginBottom:3}}>{n}d move</div>
+          <div style={{fontSize:13,fontWeight:800,color}}>±{d?.pct}%</div>
+          <div style={{fontSize:10,color:'var(--text3)'}}>±${d?.abs}</div>
+        </div>)}
+      </div>
+      <div style={{fontSize:11,color:'var(--text3)',background:'var(--bg3)',borderRadius:6,padding:'6px 10px'}}>
+        {vol.volSignal==='TRIM_REINFORCED'&&'⚠️ Elevated vol reinforces TRIM — premium for holding risk is high.'}
+        {vol.volSignal==='ADD_REINFORCED'&&'✅ Suppressed vol supports ADD — cheap to build position size.'}
+        {vol.volSignal==='HOLD_CAUTION'&&'⚡ Vol above average — size carefully, consider waiting for calm.'}
+        {vol.volSignal==='HOLD_FAVORABLE'&&'👍 Vol below average — favorable conditions for holding or adding.'}
+        {vol.volSignal==='NEUTRAL'&&'Vol is within normal range — no strong adjustment to signal.'}
+      </div>
+    </div>;})()}
+
     <div className="stats-grid">
       <div className="stat-card"><div className="stat-label">Buy</div><div className="stat-value mono" style={{fontSize:16}}>${pos.buyPrice.toFixed(2)}</div></div>
       <div className="stat-card"><div className="stat-label">Current</div><div className="stat-value mono" style={{fontSize:16}}>${pos.currentPrice.toFixed(2)}</div></div>
