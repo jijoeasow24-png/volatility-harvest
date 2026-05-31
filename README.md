@@ -5,7 +5,7 @@
 - **Daily Action Brief** — Plain English summary of what's happening and what to do
 - **Sector Momentum** — 12 sectors ranked by 30-day performance with rotation signals
 - **Smart Money Signals** — Breakouts, unusual volume, death crosses, dip opportunities
-- **Buy/Hold/Avoid Guidance** — Clear recommendations based on market rotation
+- **Buy/Hold/Avoid Guidance** — Clear recommendations based on market  rotation
 
 ## All Previous Features
 - Auto-Regime Detection (5 live indicators)
