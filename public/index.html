@@ -174,6 +174,7 @@ function AppProvider({children,demoMode=false}){
   const [lastRegimeCheck,setLastRegimeCheck]=useState(null);
   const [autoRegimeData,setAutoRegimeData]=useState(null); // NEW: live indicator data
   const [autoRegimeLoading,setAutoRegimeLoading]=useState(false);
+  const [regimeProb,setRegimeProb]=useState(null);
   const [quotes,setQuotes]=useState({});const [sparklines,setSparklines]=useState({});const [technicals,setTechnicals]=useState({});const [volatility,setVolatility]=useState({});
   const [isRefreshing,setIsRefreshing]=useState(false);const [lastRefresh,setLastRefresh]=useState(null);const [refreshError,setRefreshError]=useState(null);
   const [monthlyHistory,setMonthlyHistory]=useState([]);const [actionChecks,setActionChecks]=useState({});
@@ -202,9 +203,11 @@ function AppProvider({children,demoMode=false}){
   const fetchAutoRegime = useCallback(async()=>{
     setAutoRegimeLoading(true);
     try{
-      const r = await fetch('/api/regime');
+      const [r, rp] = await Promise.all([fetch('/api/regime'), fetch('/api/regime-probability')]);
       const data = await r.json();
+      const probData = await rp.json().catch(()=>null);
       setAutoRegimeData(data);
+      if(probData && !probData.error) setRegimeProb(probData);
       // Auto-apply answers and regime
       if(data.answers){
         setRegimeAnswers(data.answers);
@@ -243,7 +246,7 @@ function AppProvider({children,demoMode=false}){
   const toggleActionCheck=(key)=>setActionChecks(prev=>({...prev,[key]:!prev[key]}));
   const updateBudget=(v)=>{setMonthlyBudget(v);localStorage.setItem('vh_monthly_budget',v.toString());};
 
-  return<AppContext.Provider value={{theme,toggleTheme,positions,setPositions,portfolioPeak,setPeak,portfolioTotal,regime,setRegime,regimeAnswers,setRegimeAnswers,lastRegimeCheck,setLastRegimeCheck,autoRegimeData,autoRegimeLoading,fetchAutoRegime,quotes,sparklines,technicals,volatility,isRefreshing,lastRefresh,refreshError,refreshPrices,positionsValue,positionsCost,totalPnL,totalPnLPct,drawdown,circuitLevel,actionableSignals,addPosition,updatePosition,deletePosition,resetPositions,monthlyHistory,actionChecks,toggleActionCheck,notification,setNotification,monthlyBudget,updateBudget,demoMode}}>{children}</AppContext.Provider>;
+  return<AppContext.Provider value={{theme,toggleTheme,positions,setPositions,portfolioPeak,setPeak,portfolioTotal,regime,setRegime,regimeAnswers,setRegimeAnswers,lastRegimeCheck,setLastRegimeCheck,autoRegimeData,autoRegimeLoading,fetchAutoRegime,regimeProb,quotes,sparklines,technicals,volatility,isRefreshing,lastRefresh,refreshError,refreshPrices,positionsValue,positionsCost,totalPnL,totalPnLPct,drawdown,circuitLevel,actionableSignals,addPosition,updatePosition,deletePosition,resetPositions,monthlyHistory,actionChecks,toggleActionCheck,notification,setNotification,monthlyBudget,updateBudget,demoMode}}>{children}</AppContext.Provider>;
 }
 const useApp=()=>useContext(AppContext);
 
@@ -748,6 +751,50 @@ function RegimeTab(){
         </div>
       </div>
     </div>
+
+    {/* Regime Transition Probability */}
+    {app.regimeProb&&(()=>{const rp=app.regimeProb;const p=rp.pRiskOff;const color=rp.riskColor;
+    return<div className="card" style={{border:`1px solid ${color}44`,background:`${color}08`}}>
+      <div className="card-header">
+        <span className="card-title">🎲 Regime Shift Probability</span>
+        <span style={{fontSize:11,fontWeight:800,color,background:`${color}20`,padding:'2px 8px',borderRadius:4}}>{rp.riskLabel}</span>
+      </div>
+      <div className="divider"/>
+      {/* Gauge */}
+      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:12}}>
+        <div style={{position:'relative',width:72,height:72,flexShrink:0}}>
+          <svg width="72" height="72" viewBox="0 0 72 72">
+            <circle cx="36" cy="36" r="28" fill="none" stroke="var(--bg4)" strokeWidth="8"/>
+            <circle cx="36" cy="36" r="28" fill="none" stroke={color} strokeWidth="8"
+              strokeDasharray={`${p*1.759} 175.9`} strokeLinecap="round"
+              transform="rotate(-90 36 36)" style={{transition:'stroke-dasharray .6s'}}/>
+          </svg>
+          <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column'}}>
+            <span style={{fontSize:18,fontWeight:900,color}}>{p}%</span>
+          </div>
+        </div>
+        <div style={{flex:1}}>
+          <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>P(shift to Risk-Off) · next 20 sessions</div>
+          <div style={{fontSize:11,color:'var(--text3)',lineHeight:1.5}}>{rp.summary}</div>
+        </div>
+      </div>
+      {/* Feature contributions */}
+      <div style={{fontSize:11,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.4px',marginBottom:6}}>Signal Drivers</div>
+      {rp.contribs.slice(0,5).map((c,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+        <span style={{fontSize:10,color:c.bearish?'var(--red)':'var(--green)',width:12,textAlign:'center'}}>{c.bearish?'▲':'▼'}</span>
+        <div style={{flex:1}}>
+          <div style={{display:'flex',justifyContent:'space-between',marginBottom:2}}>
+            <span style={{fontSize:11,fontWeight:600}}>{c.name}</span>
+            <span style={{fontSize:11,fontWeight:700,color:'var(--text2)'}}>{c.value}</span>
+          </div>
+          <div style={{height:3,background:'var(--bg4)',borderRadius:2}}>
+            <div style={{height:'100%',borderRadius:2,width:Math.min(100,Math.abs(c.contribution)/2*100)+'%',
+              background:c.bearish?'var(--red)':'var(--green)',transition:'width .4s'}}/>
+          </div>
+          <div style={{fontSize:9,color:'var(--text3)',marginTop:1}}>{c.label}</div>
+        </div>
+      </div>)}
+    </div>;})()}
 
     {/* Live indicators */}
     <div className="card" style={{padding:12}}>
