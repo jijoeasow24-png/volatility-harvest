@@ -12,6 +12,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -1021,11 +1023,166 @@ function PositionDetail({pos,onBack}){
 }
 
 // ─── PORTFOLIO TAB ──────────────────────────────────────────────────────────
+async function generateReport(app){
+  const {jsPDF}=window.jspdf;
+  const now=new Date();
+  const dateStr=now.toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+
+  // Build report HTML (white background, print-friendly)
+  const wrap=document.createElement('div');
+  wrap.style.cssText='position:fixed;left:-9999px;top:0;width:794px;background:#ffffff;color:#0f172a;font-family:system-ui,sans-serif;font-size:13px;line-height:1.5;padding:0;z-index:-1';
+
+  const pnlColor=v=>v>=0?'#16a34a':'#dc2626';
+  const fmt$=v=>'$'+Math.abs(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const fmtPct=v=>(v>=0?'+':'')+v.toFixed(1)+'%';
+  const sig=p=>{const pct=(p.currentPrice-p.buyPrice)/p.buyPrice*100;if(pct<=-20)return{name:'EXIT',color:'#dc2626'};if(pct<=-12)return{name:'ADD ↓↓',color:'#22c55e'};if(pct>=30)return{name:'TRIM STRONG',color:'#dc2626'};if(pct>=20)return{name:'TRIM',color:'#f59e0b'};if(pct<=-6)return{name:'ADD ↓',color:'#22c55e'};return{name:'HOLD',color:'#64748b'};};
+
+  const sections=[];
+
+  // ── Page 1: Cover + Summary ──────────────────────────────────────────────
+  sections.push(`<div style="padding:48px;min-height:1123px;box-sizing:border-box;border-bottom:2px solid #e2e8f0">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:40px">
+      <div>
+        <div style="font-size:28px;font-weight:900;color:#0f172a;letter-spacing:-1px">VolatilityHarvest</div>
+        <div style="font-size:14px;color:#64748b;margin-top:4px">Portfolio Report · ${dateStr}</div>
+      </div>
+      <div style="background:#f1f5f9;border-radius:8px;padding:10px 16px;text-align:right">
+        <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Market Regime</div>
+        <div style="font-size:14px;font-weight:800;color:#0f172a;margin-top:2px">${app.regime}</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:32px">
+      ${[['Market Value',fmt$(app.positionsValue),''],['Invested',fmt$(app.positionsCost),''],['P&L',fmt$(app.totalPnL),app.totalPnL],['Return',fmtPct(app.totalPnLPct),app.totalPnLPct]].map(([l,v,c])=>`
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#64748b;margin-bottom:4px">${l}</div>
+        <div style="font-size:18px;font-weight:800;color:${c!==''?pnlColor(c):'#0f172a'}">${v}</div>
+      </div>`).join('')}
+    </div>
+
+    <div style="margin-bottom:32px">
+      <div style="font-size:16px;font-weight:800;margin-bottom:12px;color:#0f172a">Theme Allocation</div>
+      ${Object.entries(app.positions.reduce((g,p)=>{if(!g[p.theme])g[p.theme]=0;g[p.theme]+=p.currentPrice*p.shares;return g},{})).sort((a,b)=>b[1]-a[1]).map(([t,v])=>{const pct=v/Math.max(1,app.positionsValue)*100;return`
+      <div style="margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px"><span>${t}</span><span style="font-weight:700">${pct.toFixed(1)}%</span></div>
+        <div style="height:6px;background:#e2e8f0;border-radius:3px"><div style="height:100%;width:${pct.toFixed(1)}%;background:${pct>60?'#dc2626':'#3b82f6'};border-radius:3px"></div></div>
+      </div>`;}).join('')}
+    </div>
+
+    <div>
+      <div style="font-size:16px;font-weight:800;margin-bottom:12px;color:#0f172a">All Positions</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:#f1f5f9">${['Ticker','Name','Role','Buy','Current','Shares','Value','P&L','Return','Signal'].map(h=>`<th style="padding:8px 10px;text-align:left;font-weight:700;color:#475569;border-bottom:2px solid #e2e8f0;white-space:nowrap">${h}</th>`).join('')}</tr></thead>
+        <tbody>${app.positions.map((p,i)=>{const s=sig(p);const pnl=(p.currentPrice-p.buyPrice)*p.shares;const pct=(p.currentPrice-p.buyPrice)/p.buyPrice*100;return`<tr style="background:${i%2===0?'#ffffff':'#f8fafc'}">
+          <td style="padding:8px 10px;font-weight:800;border-bottom:1px solid #e2e8f0">${p.ticker}</td>
+          <td style="padding:8px 10px;color:#475569;border-bottom:1px solid #e2e8f0;max-width:120px;overflow:hidden">${p.name}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0">${p.role}</td>
+          <td style="padding:8px 10px;font-family:monospace;border-bottom:1px solid #e2e8f0">$${p.buyPrice.toFixed(2)}</td>
+          <td style="padding:8px 10px;font-family:monospace;border-bottom:1px solid #e2e8f0">$${p.currentPrice.toFixed(2)}</td>
+          <td style="padding:8px 10px;font-family:monospace;border-bottom:1px solid #e2e8f0">${p.shares}</td>
+          <td style="padding:8px 10px;font-weight:700;font-family:monospace;border-bottom:1px solid #e2e8f0">${fmt$(p.currentPrice*p.shares)}</td>
+          <td style="padding:8px 10px;font-family:monospace;color:${pnlColor(pnl)};border-bottom:1px solid #e2e8f0">${pnl>=0?'+':''}${fmt$(pnl)}</td>
+          <td style="padding:8px 10px;font-family:monospace;color:${pnlColor(pct)};font-weight:700;border-bottom:1px solid #e2e8f0">${fmtPct(pct)}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0"><span style="background:${s.color}20;color:${s.color};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;white-space:nowrap">${s.name}</span></td>
+        </tr>`;}).join('')}</tbody>
+      </table>
+    </div>
+  </div>`);
+
+  // ── Page 2: Signals + Regime ─────────────────────────────────────────────
+  const actionable=app.positions.filter(p=>sig(p).name!=='HOLD');
+  const holds=app.positions.filter(p=>sig(p).name==='HOLD');
+  const rp=app.regimeProb;
+
+  sections.push(`<div style="padding:48px;min-height:1123px;box-sizing:border-box">
+    <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:24px">VolatilityHarvest Portfolio Report · ${dateStr} · Page 2</div>
+
+    <div style="font-size:20px;font-weight:800;margin-bottom:16px;color:#0f172a">Trade Signals</div>
+
+    ${actionable.length>0?`
+    <div style="margin-bottom:24px">
+      <div style="font-size:13px;font-weight:700;color:#dc2626;margin-bottom:10px;text-transform:uppercase;letter-spacing:.4px">⚡ Actionable</div>
+      ${actionable.map(p=>{const s=sig(p);const pct=(p.currentPrice-p.buyPrice)/p.buyPrice*100;const pnl=(p.currentPrice-p.buyPrice)*p.shares;return`
+      <div style="border:1px solid ${s.color}44;border-radius:8px;padding:14px;margin-bottom:8px;background:${s.color}08">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div><span style="font-size:16px;font-weight:900">${p.ticker}</span> <span style="font-size:12px;color:#64748b">${p.name}</span></div>
+          <span style="background:${s.color};color:#fff;padding:3px 10px;border-radius:4px;font-size:12px;font-weight:700">${s.name}</span>
+        </div>
+        <div style="display:flex;gap:24px;margin-top:8px;font-size:12px;color:#475569">
+          <span>Buy: <strong>$${p.buyPrice.toFixed(2)}</strong></span>
+          <span>Now: <strong>$${p.currentPrice.toFixed(2)}</strong></span>
+          <span>P&L: <strong style="color:${pnlColor(pct)}">${fmtPct(pct)}</strong></span>
+          <span>Value: <strong>${fmt$(p.currentPrice*p.shares)}</strong></span>
+        </div>
+      </div>`;}).join('')}
+    </div>`:''}
+
+    ${holds.length>0?`
+    <div style="margin-bottom:32px">
+      <div style="font-size:13px;font-weight:700;color:#64748b;margin-bottom:10px;text-transform:uppercase;letter-spacing:.4px">✓ Hold</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        ${holds.map(p=>{const pct=(p.currentPrice-p.buyPrice)/p.buyPrice*100;return`
+        <div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px;background:#f8fafc">
+          <div style="font-weight:800">${p.ticker} <span style="font-size:11px;color:#94a3b8;font-weight:400">${p.name}</span></div>
+          <div style="font-size:12px;color:${pnlColor(pct)};font-weight:700;margin-top:2px">${fmtPct(pct)} · ${fmt$(p.currentPrice*p.shares)}</div>
+        </div>`;}).join('')}
+      </div>
+    </div>`:''}
+
+    <div style="border-top:2px solid #e2e8f0;padding-top:24px;margin-top:8px">
+      <div style="font-size:20px;font-weight:800;margin-bottom:16px;color:#0f172a">Market Regime</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#64748b;margin-bottom:6px">Current Regime</div>
+          <div style="font-size:22px;font-weight:900">${app.regime}</div>
+        </div>
+        ${rp?`<div style="background:#f8fafc;border:1px solid ${rp.riskColor}44;border-radius:8px;padding:16px">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#64748b;margin-bottom:6px">Shift Probability (20 sessions)</div>
+          <div style="font-size:22px;font-weight:900;color:${rp.riskColor}">${rp.pRiskOff}% <span style="font-size:13px">${rp.riskLabel}</span></div>
+          <div style="font-size:11px;color:#64748b;margin-top:4px">${rp.summary}</div>
+        </div>`:''}
+      </div>
+      ${rp?`<div style="margin-top:16px">
+        <div style="font-size:13px;font-weight:700;margin-bottom:10px">Signal Drivers</div>
+        ${rp.contribs.map(c=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:12px">
+          <span style="color:${c.bearish?'#dc2626':'#16a34a'};margin-right:8px">${c.bearish?'▲':'▼'}</span>
+          <span style="flex:1">${c.name}</span>
+          <span style="font-weight:700;color:#475569">${c.value}</span>
+          <span style="font-size:11px;color:#94a3b8;margin-left:12px">${c.label}</span>
+        </div>`).join('')}
+      </div>`:''}
+    </div>
+  </div>`);
+
+  wrap.innerHTML=sections.join('');
+  document.body.appendChild(wrap);
+
+  try{
+    const pdf=new jsPDF('p','mm','a4');
+    const pageW=pdf.internal.pageSize.getWidth();
+    const pageH=pdf.internal.pageSize.getHeight();
+    const pages=wrap.querySelectorAll(':scope > div');
+
+    for(let i=0;i<pages.length;i++){
+      if(i>0)pdf.addPage();
+      const canvas=await html2canvas(pages[i],{scale:2,useCORS:true,backgroundColor:'#ffffff'});
+      const imgData=canvas.toDataURL('image/png');
+      const imgH=pageW*(canvas.height/canvas.width);
+      pdf.addImage(imgData,'PNG',0,0,pageW,imgH>pageH?pageH:imgH);
+    }
+
+    pdf.save(`portfolio-report-${now.toISOString().slice(0,10)}.pdf`);
+  }finally{
+    document.body.removeChild(wrap);
+  }
+}
+
 function PortfolioTab(){
-  const app=useApp();const [theme,setTheme]=useState('All');const [showAdd,setShowAdd]=useState(false);const [showTrade,setShowTrade]=useState(false);const [showImport,setShowImport]=useState(false);
+  const app=useApp();const [theme,setTheme]=useState('All');const [showAdd,setShowAdd]=useState(false);const [showTrade,setShowTrade]=useState(false);const [showImport,setShowImport]=useState(false);const [generating,setGenerating]=useState(false);
   const filtered=theme==='All'?app.positions:app.positions.filter(p=>p.theme===theme);
   const themeAllocs=useMemo(()=>{const total=Math.max(1,app.positionsValue);const g={};app.positions.forEach(p=>{if(!g[p.theme])g[p.theme]=0;g[p.theme]+=p.currentPrice*p.shares;});return Object.entries(g).map(([t,v])=>({theme:t,value:v,pct:v/total*100})).sort((a,b)=>b.value-a.value);},[app.positions,app.positionsValue]);
-  return<div className="fade-in"><div className="page-header"><div className="page-title">Portfolio</div><div className="header-actions"><button className="refresh-btn" onClick={()=>exportCSV(app.positions)}><Icon name="download" size={14}/> CSV</button><button className="refresh-btn" style={{background:'var(--purple)',color:'#fff',border:'none',fontWeight:700,padding:'6px 12px',display:'flex',alignItems:'center',gap:5}} onClick={()=>setShowImport(true)}>📷 Import</button><button className="refresh-btn" style={{background:'var(--green)',color:'#fff',border:'none',fontWeight:700,padding:'6px 12px'}} onClick={()=>setShowTrade(true)}>📊 Trade</button><button className="refresh-btn" onClick={()=>setShowAdd(true)}><Icon name="plus" size={14}/></button></div></div>
+  const handlePDF=async()=>{setGenerating(true);try{await generateReport(app);}catch(e){alert('PDF generation failed: '+e.message);}setGenerating(false);};
+  return<div className="fade-in"><div className="page-header"><div className="page-title">Portfolio</div><div className="header-actions"><button className="refresh-btn" onClick={()=>exportCSV(app.positions)}><Icon name="download" size={14}/> CSV</button><button className="refresh-btn" style={{background:'var(--purple)',color:'#fff',border:'none',fontWeight:700,padding:'6px 12px',display:'flex',alignItems:'center',gap:5}} onClick={()=>setShowImport(true)}>📥 Import</button><button className="refresh-btn" style={{background:'var(--blue)',color:'#fff',border:'none',fontWeight:700,padding:'6px 12px'}} onClick={handlePDF} disabled={generating}>{generating?'⏳':'📄'} {generating?'Generating…':'PDF'}</button><button className="refresh-btn" style={{background:'var(--green)',color:'#fff',border:'none',fontWeight:700,padding:'6px 12px'}} onClick={()=>setShowTrade(true)}>📊 Trade</button><button className="refresh-btn" onClick={()=>setShowAdd(true)}><Icon name="plus" size={14}/></button></div></div>
   <div className="stats-grid"><div className="stat-card"><div className="stat-label">Invested</div><div className="stat-value mono" style={{fontSize:16}}>{fmt$(app.positionsCost)}</div></div><div className="stat-card"><div className="stat-label">Market Val</div><div className="stat-value mono" style={{fontSize:16}}>{fmt$(app.positionsValue)}</div></div><div className="stat-card"><div className="stat-label">P&L</div><div className="stat-value mono" style={{fontSize:16,color:pnlColor(app.totalPnL)}}>{pnlSign(app.totalPnL)}{fmt$(app.totalPnL)}</div></div><div className="stat-card"><div className="stat-label">Return</div><div className="stat-value mono" style={{fontSize:16,color:pnlColor(app.totalPnLPct)}}>{pnlSign(app.totalPnLPct)}{fmtPct(app.totalPnLPct)}</div></div></div>
   {themeAllocs.length>0&&<div className="card"><div className="card-title" style={{marginBottom:10}}>Theme Allocation</div><div className="divider"/>{themeAllocs.map(a=><div key={a.theme} style={{marginBottom:8}}><div style={{display:'flex',justifyContent:'space-between',fontSize:13,marginBottom:3}}><span>{a.theme}</span><span style={{fontWeight:700,color:a.pct>30?'var(--red)':'var(--text)'}}>{fmtPct(a.pct)}</span></div><div className="progress-bar" style={{height:5}}><div className="progress-fill" style={{width:Math.min(100,a.pct)+'%',background:a.pct>30?'var(--red)':'var(--blue)'}}/></div></div>)}</div>}
   <div className="chip-row" style={{marginBottom:12}}>{THEMES.map(t=><button key={t} className={`chip ${theme===t?'active':''}`} onClick={()=>setTheme(t)}>{t}</button>)}</div>
