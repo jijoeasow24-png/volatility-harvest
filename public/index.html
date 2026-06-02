@@ -178,7 +178,7 @@ function AppProvider({children,demoMode=false}){
   const [autoRegimeData,setAutoRegimeData]=useState(null); // NEW: live indicator data
   const [autoRegimeLoading,setAutoRegimeLoading]=useState(false);
   const [regimeProb,setRegimeProb]=useState(null);
-  const [quotes,setQuotes]=useState({});const [sparklines,setSparklines]=useState({});const [technicals,setTechnicals]=useState({});const [volatility,setVolatility]=useState({});const [benchmark,setBenchmark]=useState(null);const [priceAlerts,setPriceAlerts]=useState(()=>{try{return JSON.parse(localStorage.getItem('vh_price_alerts')||'[]');}catch{return [];}});
+  const [quotes,setQuotes]=useState({});const [sparklines,setSparklines]=useState({});const [technicals,setTechnicals]=useState({});const [volatility,setVolatility]=useState({});const [benchmark,setBenchmark]=useState(null);const [earnings,setEarnings]=useState({});const [priceAlerts,setPriceAlerts]=useState(()=>{try{return JSON.parse(localStorage.getItem('vh_price_alerts')||'[]');}catch{return [];}});
   const [isRefreshing,setIsRefreshing]=useState(false);const [lastRefresh,setLastRefresh]=useState(null);const [refreshError,setRefreshError]=useState(null);
   const [monthlyHistory,setMonthlyHistory]=useState([]);const [actionChecks,setActionChecks]=useState({});
   const [notification,setNotification]=useState(null);
@@ -231,7 +231,7 @@ function AppProvider({children,demoMode=false}){
   const refreshPrices=useCallback(async()=>{
     if(positions.length===0||isRefreshing)return;
     setIsRefreshing(true);setRefreshError(null);
-    try{const tickers=positions.map(p=>p.ticker).join(',');const [qR,tR,bR]=await Promise.all([fetch(`/api/quotes?tickers=${tickers}`),fetch(`/api/technical?tickers=${tickers}`),fetch('/api/benchmark')]);const qD=await qR.json();const tD=await tR.json().catch(()=>({}));const bD=await bR.json().catch(()=>null);if(Object.keys(qD).length===0)throw new Error('No data');const qOnly=Object.fromEntries(Object.entries(qD).map(([k,v])=>{const{sparkline,...rest}=v;return[k,rest];}));const sD=Object.fromEntries(Object.entries(qD).map(([k,v])=>[k,v.sparkline||[]]));setQuotes(qOnly);setSparklines(sD);setTechnicals(tD);setVolatility(tD);if(bD&&!bD.error)setBenchmark(bD);
+    try{const tickers=positions.map(p=>p.ticker).join(',');const [qR,tR,bR,eR]=await Promise.all([fetch(`/api/quotes?tickers=${tickers}`),fetch(`/api/technical?tickers=${tickers}`),fetch('/api/benchmark'),fetch(`/api/earnings?tickers=${tickers}`)]);const qD=await qR.json();const tD=await tR.json().catch(()=>({}));const bD=await bR.json().catch(()=>null);const eD=await eR.json().catch(()=>({}));if(Object.keys(qD).length===0)throw new Error('No data');const qOnly=Object.fromEntries(Object.entries(qD).map(([k,v])=>{const{sparkline,...rest}=v;return[k,rest];}));const sD=Object.fromEntries(Object.entries(qD).map(([k,v])=>[k,v.sparkline||[]]));setQuotes(qOnly);setSparklines(sD);setTechnicals(tD);setVolatility(tD);setEarnings(eD);if(bD&&!bD.error)setBenchmark(bD);
       // ── Price alert check ─────────────────────────────────────────────────
       setPriceAlerts(prev=>{const triggered=prev.filter(a=>{const q=qD[a.ticker.toUpperCase()];if(!q)return false;return a.direction==='above'?q.price>=a.target:q.price<=a.target;});if(triggered.length>0)setNotification({type:'info',text:`🎯 Price alert: ${triggered.map(a=>`${a.ticker} hit $${a.target}`).join(', ')}`});return prev;});setPositions(prev=>prev.map(p=>{const q=qD[p.ticker.toUpperCase()];return q?{...p,currentPrice:q.price}:p;}));setLastRefresh(new Date());
     const exits=positions.filter(p=>{const q=qD[p.ticker.toUpperCase()];if(!q)return false;const pct=(q.price-p.buyPrice)/p.buyPrice;return pct<=ROLES[p.role]?.stopLoss;});
@@ -250,7 +250,7 @@ function AppProvider({children,demoMode=false}){
   const toggleActionCheck=(key)=>setActionChecks(prev=>({...prev,[key]:!prev[key]}));
   const updateBudget=(v)=>{setMonthlyBudget(v);localStorage.setItem('vh_monthly_budget',v.toString());};
 
-  return<AppContext.Provider value={{theme,toggleTheme,positions,setPositions,portfolioPeak,setPeak,portfolioTotal,regime,setRegime,regimeAnswers,setRegimeAnswers,lastRegimeCheck,setLastRegimeCheck,autoRegimeData,autoRegimeLoading,fetchAutoRegime,regimeProb,quotes,sparklines,technicals,volatility,benchmark,priceAlerts,setPriceAlerts,isRefreshing,lastRefresh,refreshError,refreshPrices,positionsValue,positionsCost,totalPnL,totalPnLPct,drawdown,circuitLevel,actionableSignals,addPosition,updatePosition,deletePosition,resetPositions,monthlyHistory,actionChecks,toggleActionCheck,notification,setNotification,monthlyBudget,updateBudget,demoMode}}>{children}</AppContext.Provider>;
+  return<AppContext.Provider value={{theme,toggleTheme,positions,setPositions,portfolioPeak,setPeak,portfolioTotal,regime,setRegime,regimeAnswers,setRegimeAnswers,lastRegimeCheck,setLastRegimeCheck,autoRegimeData,autoRegimeLoading,fetchAutoRegime,regimeProb,quotes,sparklines,technicals,volatility,benchmark,earnings,priceAlerts,setPriceAlerts,isRefreshing,lastRefresh,refreshError,refreshPrices,positionsValue,positionsCost,totalPnL,totalPnLPct,drawdown,circuitLevel,actionableSignals,addPosition,updatePosition,deletePosition,resetPositions,monthlyHistory,actionChecks,toggleActionCheck,notification,setNotification,monthlyBudget,updateBudget,demoMode}}>{children}</AppContext.Provider>;
 }
 const useApp=()=>useContext(AppContext);
 
@@ -857,6 +857,7 @@ function SignalsTab(){
       {score!==null&&<span style={{fontSize:10,fontWeight:800,color:sl.color,background:sl.bg,borderRadius:4,padding:'2px 8px',marginLeft:'auto'}}>Setup {score}/100 · {sl.label}</span>}
     </div>}
     {vol&&<VolStrip vol={vol}/>}
+    {(()=>{const e=app.earnings[pos.ticker.toUpperCase()];if(!e||e.daysUntil===null||e.daysUntil>14)return null;const urgent=e.daysUntil<=5;return<div style={{display:'flex',alignItems:'center',gap:4,marginTop:5,fontSize:10,fontWeight:700,color:urgent?'#ef4444':'#f59e0b',background:urgent?'#ef444415':'#f59e0b15',borderRadius:4,padding:'3px 8px',width:'fit-content'}}>📅 Earnings {e.daysUntil<=0?'today':e.daysUntil===1?'tomorrow':`in ${e.daysUntil}d`} ({e.date}{e.isEstimate?'~':''}) — vol elevated, review before acting</div>;})()}
   </div>;})}
   {showAdd&&<PositionModal onClose={()=>setShowAdd(false)} position={null}/>}</div>;
 }
@@ -1877,6 +1878,8 @@ function SmartPicksCard(){
           if(d.baseScore<35)return null;
           // 8. No active risk flags from analyze endpoint
           if(d.riskFlags&&d.riskFlags.length>1)return null;
+          // 9. Block if earnings within 7 days — signals are unreliable pre-earnings
+          if(d.daysUntilEarnings!==null&&d.daysUntilEarnings<=7)return null;
 
           // ── Diversification bonus ─────────────────────────────────────
           const missing=!userSectors.has(stock.sector);
@@ -1899,8 +1902,9 @@ function SmartPicksCard(){
           if(m.rsi>=40&&m.rsi<=58)reasons.push(`RSI ${m.rsi} — neutral, room to run`);
           if(momentum>3&&momentum<12)reasons.push(`+${momentum.toFixed(1)}% 20d momentum — healthy uptrend`);
           if(d.fromHigh52>-8)reasons.push(`Near 52-week high — strong price strength`);
+          if(d.daysUntilEarnings!==null&&d.daysUntilEarnings<=21)reasons.push(`📅 Earnings ${d.daysUntilEarnings<=0?'today':d.daysUntilEarnings===1?'tomorrow':`in ${d.daysUntilEarnings}d`} (${d.earningsDate}${d.earningsIsEstimate?'~':''}) — consider waiting`);
 
-          return{ticker:stock.ticker,name:d.name||stock.name,sector:stock.sector,score:finalScore,signal:d.signal,signalColor:d.signalColor,action:d.action,reasons:reasons.slice(0,3),metrics:m,expectedRange:d.expectedRange,current:d.current,analystRating:rating,analystCount:d.analystCount,fromHigh52:d.fromHigh52};
+          return{ticker:stock.ticker,name:d.name||stock.name,sector:stock.sector,score:finalScore,signal:d.signal,signalColor:d.signalColor,action:d.action,reasons:reasons.slice(0,3),metrics:m,expectedRange:d.expectedRange,current:d.current,analystRating:rating,analystCount:d.analystCount,fromHigh52:d.fromHigh52,daysUntilEarnings:d.daysUntilEarnings,earningsDate:d.earningsDate,earningsIsEstimate:d.earningsIsEstimate};
         }catch{return null;}
       }));
       all.push(...res.filter(Boolean));
@@ -1982,6 +1986,11 @@ function SmartPicksCard(){
       {r.metrics?.rsi>=65&&r.metrics?.rsi<70&&<div style={{display:'flex',gap:6,marginBottom:3,background:'#78350f22',borderRadius:4,padding:'3px 6px'}}>
         <span style={{fontSize:11,flexShrink:0}}>⚡</span>
         <span style={{fontSize:11,color:'#f59e0b'}}>RSI {r.metrics.rsi} — nearing overbought, momentum may stall soon</span>
+      </div>}
+      {/* Earnings warning */}
+      {r.daysUntilEarnings!==null&&r.daysUntilEarnings<=21&&<div style={{display:'flex',gap:6,marginBottom:3,background:'#7c3aed15',borderRadius:4,padding:'3px 6px'}}>
+        <span style={{fontSize:11,flexShrink:0}}>📅</span>
+        <span style={{fontSize:11,color:'#a78bfa'}}>Earnings {r.daysUntilEarnings<=0?'today':r.daysUntilEarnings===1?'tomorrow':`in ${r.daysUntilEarnings}d`} ({r.earningsDate}{r.earningsIsEstimate?'~':''}) — signals may reprice post-report</span>
       </div>}
       {/* Reasons */}
       {r.reasons.map((reason,j)=><div key={j} style={{display:'flex',gap:6,marginBottom:3}}>
