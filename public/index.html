@@ -206,11 +206,10 @@ function AppProvider({children,demoMode=false}){
   const fetchAutoRegime = useCallback(async()=>{
     setAutoRegimeLoading(true);
     try{
-      const [r, rp] = await Promise.all([fetch('/api/regime'), fetch('/api/regime-probability')]);
+      const r = await fetch('/api/regime');
       const data = await r.json();
-      const probData = await rp.json().catch(()=>null);
       setAutoRegimeData(data);
-      if(probData && !probData.error) setRegimeProb(probData);
+      if(data && data.pRiskOff != null) setRegimeProb(data);
       // Auto-apply answers and regime
       if(data.answers){
         setRegimeAnswers(data.answers);
@@ -232,7 +231,7 @@ function AppProvider({children,demoMode=false}){
   const refreshPrices=useCallback(async()=>{
     if(positions.length===0||isRefreshing)return;
     setIsRefreshing(true);setRefreshError(null);
-    try{const tickers=positions.map(p=>p.ticker).join(',');const [qR,sR,tR,vR,bR]=await Promise.all([fetch(`/api/quotes?tickers=${tickers}`),fetch(`/api/sparkline?tickers=${tickers}`),fetch(`/api/technical?tickers=${tickers}`),fetch(`/api/volatility?tickers=${tickers}`),fetch('/api/benchmark')]);const qD=await qR.json();const sD=await sR.json();const tD=await tR.json().catch(()=>({}));const vD=await vR.json().catch(()=>({}));const bD=await bR.json().catch(()=>null);if(Object.keys(qD).length===0)throw new Error('No data');setQuotes(qD);setSparklines(sD);setTechnicals(tD);setVolatility(vD);if(bD&&!bD.error)setBenchmark(bD);
+    try{const tickers=positions.map(p=>p.ticker).join(',');const [qR,tR,bR]=await Promise.all([fetch(`/api/quotes?tickers=${tickers}`),fetch(`/api/technical?tickers=${tickers}`),fetch('/api/benchmark')]);const qD=await qR.json();const tD=await tR.json().catch(()=>({}));const bD=await bR.json().catch(()=>null);if(Object.keys(qD).length===0)throw new Error('No data');const qOnly=Object.fromEntries(Object.entries(qD).map(([k,v])=>{const{sparkline,...rest}=v;return[k,rest];}));const sD=Object.fromEntries(Object.entries(qD).map(([k,v])=>[k,v.sparkline||[]]));setQuotes(qOnly);setSparklines(sD);setTechnicals(tD);setVolatility(tD);if(bD&&!bD.error)setBenchmark(bD);
       // ── Price alert check ─────────────────────────────────────────────────
       setPriceAlerts(prev=>{const triggered=prev.filter(a=>{const q=qD[a.ticker.toUpperCase()];if(!q)return false;return a.direction==='above'?q.price>=a.target:q.price<=a.target;});if(triggered.length>0)setNotification({type:'info',text:`🎯 Price alert: ${triggered.map(a=>`${a.ticker} hit $${a.target}`).join(', ')}`});return prev;});setPositions(prev=>prev.map(p=>{const q=qD[p.ticker.toUpperCase()];return q?{...p,currentPrice:q.price}:p;}));setLastRefresh(new Date());
     const exits=positions.filter(p=>{const q=qD[p.ticker.toUpperCase()];if(!q)return false;const pct=(q.price-p.buyPrice)/p.buyPrice;return pct<=ROLES[p.role]?.stopLoss;});
@@ -625,9 +624,9 @@ function WeeklySummary(){
     const portfolio=new Set(app.positions.map(p=>p.ticker.toUpperCase()));
     const candidates=['AAPL','TSLA','META','AMD','SMCI','BABA','COIN','MSTR','XLE','XLV','GLD','SPY','SHOP','NFLX','UBER','ARM'].filter(t=>!portfolio.has(t)).slice(0,14);
     try{
-      const [qRes,sRes]=await Promise.all([fetch(`/api/quotes?tickers=${candidates.join(',')}`),fetch(`/api/sparkline?tickers=${candidates.join(',')}`)]);
-      const qd=await qRes.json();const sd=await sRes.json();
-      const items=candidates.map(t=>{const q=qd[t];const sp=sd[t];if(!q||!sp||sp.length<2)return null;const wAgo=sp[0].c;const wPct=((q.price-wAgo)/wAgo)*100;return{ticker:t,price:q.price,weekPct:wPct};}).filter(Boolean).sort((a,b)=>b.weekPct-a.weekPct).slice(0,6);
+      const qRes=await fetch(`/api/quotes?tickers=${candidates.join(',')}`);
+      const qd=await qRes.json();
+      const items=candidates.map(t=>{const q=qd[t];const sp=q?.sparkline;if(!q||!sp||sp.length<2)return null;const wAgo=sp[0].c;const wPct=((q.price-wAgo)/wAgo)*100;return{ticker:t,price:q.price,weekPct:wPct};}).filter(Boolean).sort((a,b)=>b.weekPct-a.weekPct).slice(0,6);
       setMissed(items);
     }catch(e){setMissed([]);}setMLoad(false);
   };
@@ -1221,10 +1220,10 @@ function WatchlistTab(){
     const t=lticker.toUpperCase().trim();if(!t)return;
     setLload(true);setLresult(null);setLerr(null);
     try{
-      const [qRes,sRes]=await Promise.all([fetch(`/api/quotes?tickers=${t}`),fetch(`/api/sparkline?tickers=${t}`)]);
-      const qd=await qRes.json();const sd=await sRes.json();
+      const qRes=await fetch(`/api/quotes?tickers=${t}`);
+      const qd=await qRes.json();
       const q=qd[t];if(!q||!q.price)throw new Error('not found');
-      setLresult({ticker:t,q,spark:sd[t]});
+      setLresult({ticker:t,q,spark:q.sparkline});
     }catch(e){setLerr('Could not find "'+lticker.toUpperCase().trim()+'" — check the ticker symbol');}
     setLload(false);
   };
