@@ -1979,6 +1979,11 @@ function SmartPicksCard(){
         <span style={{color:'var(--orange)',fontSize:11,flexShrink:0}}>⚠</span>
         <span style={{fontSize:11,color:'var(--orange)'}}>{f}</span>
       </div>)}
+      {/* RSI boundary warning — shown when RSI is 65–69 (close to the 70 overbought gate) */}
+      {r.metrics?.rsi>=65&&r.metrics?.rsi<70&&<div style={{display:'flex',gap:6,marginBottom:3,background:'#78350f22',borderRadius:4,padding:'3px 6px'}}>
+        <span style={{fontSize:11,flexShrink:0}}>⚡</span>
+        <span style={{fontSize:11,color:'#f59e0b'}}>RSI {r.metrics.rsi} — nearing overbought, momentum may stall soon</span>
+      </div>}
       {/* Reasons */}
       {r.reasons.map((reason,j)=><div key={j} style={{display:'flex',gap:6,marginBottom:3}}>
         <span style={{color:'var(--green)',fontSize:11,flexShrink:0}}>✓</span>
