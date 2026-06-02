@@ -4,13 +4,12 @@
 const sigmoid = x => 1 / (1 + Math.exp(-x));
 
 async function fetchData(ticker) {
-  const [chart, quote] = await Promise.all([
-    fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1y`,
-      { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' } }).then(r => r.json()),
-    fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=5d`,
-      { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' } }).then(r => r.json()),
+  const headers = { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' };
+  const [chart, summary] = await Promise.all([
+    fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1y`, { headers }).then(r => r.json()),
+    fetch(`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=financialData,defaultKeyStatistics,calendarEvents`, { headers }).then(r => r.json()).catch(() => null),
   ]);
-  return { chart, quote };
+  return { chart, summary };
 }
 
 function mean(arr) { return arr.reduce((a, b) => a + b, 0) / arr.length; }
@@ -24,7 +23,7 @@ export default async function handler(req, res) {
   if (!ticker) return res.status(400).json({ error: 'Ticker required' });
 
   try {
-    const { chart } = await fetchData(ticker);
+    const { chart, summary } = await fetchData(ticker);
     const raw = chart.chart?.result?.[0];
     if (!raw) return res.status(404).json({ error: `No data found for ${ticker}` });
 
@@ -166,25 +165,79 @@ export default async function handler(req, res) {
     if (pos52 > 85) factors.push({ text: `Near 52-week high (${pos52}%) — momentum but limited upside buffer`, bull: false });
     else if (pos52 < 20) factors.push({ text: `Near 52-week low (${pos52}%) — oversold territory`, bull: false });
 
+    // ── Analyst consensus from Yahoo Finance ──────────────────────────────
+    const finData  = summary?.quoteSummary?.result?.[0]?.financialData;
+    const keyStats = summary?.quoteSummary?.result?.[0]?.defaultKeyStatistics;
+
+    // ── Upcoming earnings date ────────────────────────────────────────────
+    const calEvents    = summary?.quoteSummary?.result?.[0]?.calendarEvents;
+    const earningsDts  = calEvents?.earnings?.earningsDate || [];
+    const nowMs        = Date.now();
+    const nextEarnings = earningsDts.find(e => e.raw * 1000 > nowMs - 86400000);
+    const daysUntilEarnings = nextEarnings ? Math.round((nextEarnings.raw * 1000 - nowMs) / 86400000) : null;
+    const earningsDate      = nextEarnings ? new Date(nextEarnings.raw * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null;
+    const earningsIsEstimate = calEvents?.earnings?.isEarningsDateEstimate ?? false;
+    const analystRating = finData?.recommendationKey || 'none'; // strong_buy | buy | hold | sell | strong_sell
+    const analystCount  = finData?.numberOfAnalystOpinions?.raw || 0;
+    const analystMean   = finData?.recommendationMean?.raw || null; // 1=strong buy → 5=strong sell
+    const week52High    = keyStats?.fiftyTwoWeekHigh?.raw || high52;
+    const fromHigh52    = Math.round(((current - week52High) / week52High) * 1000) / 10; // negative = below high
+
+    // ── Risk flags ────────────────────────────────────────────────────────
+    const riskFlags = [];
+    if (fromHigh52 < -30) riskFlags.push(`Down ${Math.abs(fromHigh52)}% from 52-week high — possible distressed situation`);
+    if (analystRating === 'sell' || analystRating === 'strong_sell') riskFlags.push(`Analysts rate ${analystRating.replace('_',' ')} — consensus caution`);
+    if (analystMean && analystMean > 3.5) riskFlags.push('Analyst consensus below hold — weak conviction');
+    if (volPct > 75 && ret20d < 0) riskFlags.push('High vol + negative momentum — avoid for now');
+
+    // ── Analyst score adjustment ──────────────────────────────────────────
+    // Strong buy = +8, buy = +4, hold = 0, sell = -15, strong_sell = -25
+    const analystBonus = analystRating === 'strong_buy' ? 8
+      : analystRating === 'buy' ? 4
+      : analystRating === 'hold' ? 0
+      : analystRating === 'sell' ? -15
+      : analystRating === 'strong_sell' ? -25 : 0;
+
+    const adjustedScore = Math.min(100, Math.max(0, score + analystBonus));
+
     // ── Suggested action ───────────────────────────────────────────────────
-    const action = score >= 72
+    const action = adjustedScore >= 72
       ? `Conditions are favorable. Consider entering at current price or on any minor dip. Keep position size moderate given ${annualVol}% annual vol.`
-      : score >= 55
+      : adjustedScore >= 55
       ? `Decent setup but not ideal. Wait for vol to ease or a small pullback before entering. Risk/reward is acceptable.`
-      : score >= 38
+      : adjustedScore >= 38
       ? `Mixed signals — don't rush. Watch for RSI to cool or price to pull back toward MA50 before committing.`
-      : score >= 22
+      : adjustedScore >= 22
       ? `Several caution flags. If you want exposure, use a small starter position only and set a clear stop.`
       : `Conditions are poor for entry. High vol, weak trend, and/or overbought — wait for a better setup.`;
+
+    const finalSignal = adjustedScore >= 72 ? 'STRONG ENTRY'
+      : adjustedScore >= 55 ? 'FAVORABLE'
+      : adjustedScore >= 38 ? 'NEUTRAL'
+      : adjustedScore >= 22 ? 'CAUTION'
+      : 'AVOID';
+    const finalColor = adjustedScore >= 72 ? '#22c55e'
+      : adjustedScore >= 55 ? '#3b82f6'
+      : adjustedScore >= 38 ? '#f59e0b'
+      : '#ef4444';
 
     res.json({
       ticker,
       name: meta.longName || meta.shortName || ticker,
       current,
-      score,
-      signal,
-      signalColor,
-      components: { volScore, momScore, rsiScore, trendScore },
+      score: adjustedScore,
+      baseScore: score,
+      signal: finalSignal,
+      signalColor: finalColor,
+      analystRating,
+      analystCount,
+      analystMean,
+      fromHigh52,
+      daysUntilEarnings,
+      earningsDate,
+      earningsIsEstimate,
+      riskFlags,
+      components: { volScore, momScore, rsiScore, trendScore, analystBonus },
       factors: factors.slice(0, 5),
       action,
       expectedRange: {
