@@ -5,11 +5,13 @@ const sigmoid = x => 1 / (1 + Math.exp(-x));
 
 async function fetchData(ticker) {
   const headers = { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' };
-  const [chart, summary] = await Promise.all([
+  // calendarEvents fetched separately — combining modules causes silent failures in Yahoo Finance
+  const [chart, summary, calendar] = await Promise.all([
     fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1y`, { headers }).then(r => r.json()),
-    fetch(`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=financialData,defaultKeyStatistics,calendarEvents`, { headers }).then(r => r.json()).catch(() => null),
+    fetch(`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=financialData,defaultKeyStatistics`, { headers }).then(r => r.json()).catch(() => null),
+    fetch(`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=calendarEvents`, { headers }).then(r => r.json()).catch(() => null),
   ]);
-  return { chart, summary };
+  return { chart, summary, calendar };
 }
 
 function mean(arr) { return arr.reduce((a, b) => a + b, 0) / arr.length; }
@@ -23,7 +25,7 @@ export default async function handler(req, res) {
   if (!ticker) return res.status(400).json({ error: 'Ticker required' });
 
   try {
-    const { chart, summary } = await fetchData(ticker);
+    const { chart, summary, calendar } = await fetchData(ticker);
     const raw = chart.chart?.result?.[0];
     if (!raw) return res.status(404).json({ error: `No data found for ${ticker}` });
 
@@ -169,8 +171,8 @@ export default async function handler(req, res) {
     const finData  = summary?.quoteSummary?.result?.[0]?.financialData;
     const keyStats = summary?.quoteSummary?.result?.[0]?.defaultKeyStatistics;
 
-    // ── Upcoming earnings date ────────────────────────────────────────────
-    const calEvents    = summary?.quoteSummary?.result?.[0]?.calendarEvents;
+    // ── Upcoming earnings date (separate fetch — combining modules breaks Yahoo Finance) ──
+    const calEvents    = calendar?.quoteSummary?.result?.[0]?.calendarEvents;
     const earningsDts  = calEvents?.earnings?.earningsDate || [];
     const nowMs        = Date.now();
     const nextEarnings = earningsDts.find(e => e.raw * 1000 > nowMs - 86400000);
