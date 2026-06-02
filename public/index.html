@@ -2280,6 +2280,14 @@ function StockAnalyzer(){
         </div>
         {/* Action */}
         <div style={{fontSize:12,color:'var(--text2)',lineHeight:1.5,background:'var(--bg3)',borderRadius:6,padding:'8px 10px'}}>{result.action}</div>
+        {/* Earnings warning */}
+        {result.daysUntilEarnings!==null&&result.daysUntilEarnings<=30&&<div style={{display:'flex',gap:8,alignItems:'center',marginTop:8,background:result.daysUntilEarnings<=7?'#ef444420':'#f59e0b15',borderRadius:6,padding:'8px 10px',border:`1px solid ${result.daysUntilEarnings<=7?'#ef444440':'#f59e0b40'}`}}>
+          <span style={{fontSize:14,flexShrink:0}}>📅</span>
+          <div>
+            <div style={{fontSize:11,fontWeight:800,color:result.daysUntilEarnings<=7?'#ef4444':'#f59e0b'}}>Earnings {result.daysUntilEarnings<=0?'today':result.daysUntilEarnings===1?'tomorrow':`in ${result.daysUntilEarnings} days`} — {result.earningsDate}{result.earningsIsEstimate?' (est.)':''}</div>
+            <div style={{fontSize:10,color:'var(--text3)',marginTop:2}}>{result.daysUntilEarnings<=7?'Vol is artificially elevated pre-earnings. Entry score may not reflect post-report price action. Consider waiting.':'Upcoming earnings may move price significantly. Factor this into position sizing.'}</div>
+          </div>
+        </div>}
       </div>
 
       {/* Expected range */}
@@ -2325,6 +2333,7 @@ function StockAnalyzer(){
           <div style={{background:'var(--bg3)',borderRadius:6,padding:'6px 10px'}}><span style={{color:'var(--text3)'}}>20d return </span><strong style={{color:result.metrics.ret20d>=0?'var(--green)':'var(--red)'}}>{pSign(result.metrics.ret20d??0)}</strong></div>
           <div style={{background:'var(--bg3)',borderRadius:6,padding:'6px 10px'}}><span style={{color:'var(--text3)'}}>52W pos </span><strong>{result.metrics.pos52}%</strong></div>
           <div style={{background:'var(--bg3)',borderRadius:6,padding:'6px 10px'}}><span style={{color:'var(--text3)'}}>Ann vol </span><strong>{result.metrics.annualVol}%</strong></div>
+          {result.earningsDate&&<div style={{background:'var(--bg3)',borderRadius:6,padding:'6px 10px',gridColumn:'1/-1'}}><span style={{color:'var(--text3)'}}>Next earnings </span><strong style={{color:result.daysUntilEarnings<=14?'#f59e0b':'var(--text)'}}>{result.earningsDate}{result.earningsIsEstimate?' ~':''} {result.daysUntilEarnings!==null?`(${result.daysUntilEarnings<=0?'today':result.daysUntilEarnings===1?'tomorrow':`in ${result.daysUntilEarnings}d`})`:''}</strong></div>}
         </div>
       </div>
     </div>}
