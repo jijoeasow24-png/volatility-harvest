@@ -1856,29 +1856,52 @@ function SmartPicksCard(){
           const d=await r.json();
           if(d.error||!d.score)return null;
 
-          // Diversification bonus — reward sectors the user is missing
-          const missing=!userSectors.has(stock.sector);
-          const divBonus=missing?18:0;
+          const m=d.metrics||{};
+          const rating=d.analystRating||'none';
+          const momentum=m.ret20d||0;
 
-          // Regime adjustment
+          // ══ HARD QUALITY GATES — all must pass ════════════════════════
+          // 1. Must be above 200DMA — rules out distressed recovery stocks.
+          //    Also reject if 200DMA data is unavailable (insufficient history).
+          if(m.pctFromMa200==null||m.pctFromMa200<0)return null;
+          // 2. Must have positive 20d momentum — no falling knives
+          if(momentum<=0)return null;
+          // 3. Not more than 15% below 52-week high — rules out crash survivors
+          if(d.fromHigh52!=null&&d.fromHigh52<-15)return null;
+          // 4. RSI not overbought — don't chase (standard threshold is 70)
+          if(m.rsi>=70)return null;
+          // 5. No sell / strong_sell analyst rating
+          if(rating==='sell'||rating==='strong_sell')return null;
+          // 6. Hold consensus with many analysts = skip (weak conviction)
+          if(rating==='hold'&&d.analystCount>8)return null;
+          // 7. Base entry score must be decent
+          if(d.baseScore<35)return null;
+          // 8. No active risk flags from analyze endpoint
+          if(d.riskFlags&&d.riskFlags.length>1)return null;
+
+          // ── Diversification bonus ─────────────────────────────────────
+          const missing=!userSectors.has(stock.sector);
+          const divBonus=missing?5:0;
+
+          // ── Regime adjustment ─────────────────────────────────────────
           let regimeBonus=0;
-          const momentum=d.metrics?.ret20d||0;
-          if(isRiskOn&&momentum>3)regimeBonus=8;   // Risk-On: reward momentum
-          if(!isRiskOn&&['Bonds','Utilities','Commodities','Healthcare'].includes(stock.sector))regimeBonus=12; // Risk-Off: reward defensives
-          if(isRiskOn&&['Bonds','Utilities'].includes(stock.sector))regimeBonus=-10; // Risk-On: penalise defensives
+          if(isRiskOn&&momentum>3&&momentum<15)regimeBonus=6;
+          if(!isRiskOn&&['Bonds','Utilities','Healthcare'].includes(stock.sector))regimeBonus=8;
+          if(isRiskOn&&['Bonds','Utilities'].includes(stock.sector))regimeBonus=-8;
 
           const finalScore=Math.min(100,Math.max(0,d.score+divBonus+regimeBonus));
 
-          // Why recommended
+          // ── Why recommended ───────────────────────────────────────────
           const reasons=[];
           if(missing)reasons.push(`Adds ${stock.sector} — sector missing from your portfolio`);
-          if(d.metrics?.volPct<35)reasons.push(`Low vol (${d.metrics.volPct}th pct) — cheap entry window`);
-          if(d.metrics?.pctFromMa200>0&&d.metrics?.pctFromMa50<0)reasons.push('Pulled back to MA50 within uptrend — classic entry');
-          if(d.metrics?.rsi>=40&&d.metrics?.rsi<=55)reasons.push(`RSI ${d.metrics.rsi} — neutral, not overbought`);
-          if(momentum>3&&momentum<12)reasons.push(`+${momentum.toFixed(1)}% 20d momentum — healthy trend`);
-          if(!missing)reasons.push(`Diversifies within ${stock.sector}`);
+          if((rating==='strong_buy'||rating==='buy')&&d.analystCount>3)reasons.push(`${d.analystCount} analysts rate ${rating.replace('_',' ')} — strong consensus`);
+          if(m.volPct<35)reasons.push(`Low vol (${m.volPct}th pct) — cheap entry window`);
+          if(m.pctFromMa200>0&&m.pctFromMa50<0)reasons.push('Pulled back to MA50 in uptrend — classic entry point');
+          if(m.rsi>=40&&m.rsi<=58)reasons.push(`RSI ${m.rsi} — neutral, room to run`);
+          if(momentum>3&&momentum<12)reasons.push(`+${momentum.toFixed(1)}% 20d momentum — healthy uptrend`);
+          if(d.fromHigh52>-8)reasons.push(`Near 52-week high — strong price strength`);
 
-          return{ticker:stock.ticker,name:d.name||stock.name,sector:stock.sector,score:finalScore,signal:d.signal,signalColor:d.signalColor,action:d.action,reasons:reasons.slice(0,3),metrics:d.metrics,expectedRange:d.expectedRange,current:d.current};
+          return{ticker:stock.ticker,name:d.name||stock.name,sector:stock.sector,score:finalScore,signal:d.signal,signalColor:d.signalColor,action:d.action,reasons:reasons.slice(0,3),metrics:m,expectedRange:d.expectedRange,current:d.current,analystRating:rating,analystCount:d.analystCount,fromHigh52:d.fromHigh52};
         }catch{return null;}
       }));
       all.push(...res.filter(Boolean));
@@ -1943,6 +1966,19 @@ function SmartPicksCard(){
         <span style={{color:'var(--green)'}}>↑ {fmt$(r.expectedRange.high)}</span>
         <span style={{color:'var(--text3)'}}>±{r.expectedRange.movePct}% 30d</span>
       </div>}
+      {/* Analyst badge */}
+      {r.analystRating&&r.analystRating!=='none'&&<div style={{marginBottom:6}}>
+        <span style={{fontSize:10,padding:'2px 8px',borderRadius:10,fontWeight:700,
+          background:r.analystRating==='strong_buy'||r.analystRating==='buy'?'var(--green-bg)':'var(--orange-bg)',
+          color:r.analystRating==='strong_buy'||r.analystRating==='buy'?'var(--green)':'var(--orange)'}}>
+          👥 {r.analystCount} analysts · {r.analystRating.replace(/_/g,' ').toUpperCase()}
+        </span>
+      </div>}
+      {/* Risk flags */}
+      {r.riskFlags?.map((f,j)=><div key={j} style={{display:'flex',gap:6,marginBottom:3}}>
+        <span style={{color:'var(--orange)',fontSize:11,flexShrink:0}}>⚠</span>
+        <span style={{fontSize:11,color:'var(--orange)'}}>{f}</span>
+      </div>)}
       {/* Reasons */}
       {r.reasons.map((reason,j)=><div key={j} style={{display:'flex',gap:6,marginBottom:3}}>
         <span style={{color:'var(--green)',fontSize:11,flexShrink:0}}>✓</span>
@@ -1950,6 +1986,7 @@ function SmartPicksCard(){
       </div>)}
     </div>)}
 
+    {ran&&!loading&&results.length===0&&<div style={{textAlign:'center',padding:'20px 0',color:'var(--text3)',fontSize:13}}>No strong setups passed all filters right now. Market may be extended — try again after a pullback.</div>}
     {ran&&!loading&&results.length>0&&<button className="btn btn-secondary btn-full" style={{marginTop:4,fontSize:12}} onClick={run}>↺ Refresh picks</button>}
   </div>;
 }
