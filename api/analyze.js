@@ -37,6 +37,13 @@ export default async function handler(req, res) {
 
     const current = closes[closes.length - 1];
 
+    // ── Price sanity check — catch Yahoo Finance data spikes/corruptions ───
+    const recentSorted = [...closes.slice(-20)].sort((a, b) => a - b);
+    const medianRecent = recentSorted[Math.floor(recentSorted.length / 2)];
+    if (current > medianRecent * 3 || current < medianRecent * 0.33) {
+      return res.status(400).json({ error: `Price data anomaly for ${ticker} — Yahoo Finance may have returned incorrect data. Try again shortly.` });
+    }
+
     // ── RSI(14) ────────────────────────────────────────────────────────────
     const changes = closes.slice(1).map((c, i) => c - closes[i]);
     let avgGain = 0, avgLoss = 0;
@@ -193,9 +200,10 @@ export default async function handler(req, res) {
     if (volPct > 75 && ret20d < 0) riskFlags.push('High vol + negative momentum — avoid for now');
 
     // ── Analyst score adjustment ──────────────────────────────────────────
-    // Strong buy = +8, buy = +4, hold = 0, sell = -15, strong_sell = -25
+    // Strong buy = +8, buy = +4, hold = 0, hold-leaning (mean >2.8) = -8, sell = -15, strong_sell = -25
     const analystBonus = analystRating === 'strong_buy' ? 8
       : analystRating === 'buy' ? 4
+      : analystRating === 'hold' && analystMean && analystMean > 2.8 ? -8
       : analystRating === 'hold' ? 0
       : analystRating === 'sell' ? -15
       : analystRating === 'strong_sell' ? -25 : 0;
