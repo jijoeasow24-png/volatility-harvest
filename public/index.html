@@ -1610,7 +1610,7 @@ function ImportModal({onClose}){
       const name=iN>=0?(cols[iN]||'').replace(/"/g,'').trim()||ticker:ticker;
       const role=iR>=0&&['Core','Satellite','Hedge'].includes(cols[iR])?cols[iR]:'Core';
       const theme=iT2>=0?cols[iT2]||'Technology':'Technology';
-      positions.push({ticker,name,shares,buyPrice,currentPrice,role,theme,skip:existing.has(ticker)});
+      positions.push({ticker,name,shares,buyPrice,currentPrice,role,theme,skip:false,isExisting:existing.has(ticker)});
     }
     if(positions.length===0)throw new Error('No valid positions found in CSV. Check that ticker, shares, and buy price columns have data.');
     return positions;
@@ -1661,13 +1661,26 @@ function ImportModal({onClose}){
       if(!r.ok)throw new Error(d.error||'Scan failed');
       if(!d.positions||d.positions.length===0)throw new Error('No positions found — try a screenshot showing tickers, shares, and prices clearly.');
       const existing=new Set(app.positions.map(p=>p.ticker.toUpperCase()));
-      setParsed(d.positions.map(p=>({...p,role:'Core',theme:'Technology',buyPrice:p.currentPrice,skip:existing.has(p.ticker)})));
+      setParsed(d.positions.map(p=>({...p,role:'Core',theme:'Technology',buyPrice:p.currentPrice,skip:false,isExisting:existing.has(p.ticker)})));
       setStep('review');
     }catch(e){setErr(e.message);setStep('ready');}
   };
 
   const upd=(i,k,v)=>setParsed(prev=>prev.map((p,idx)=>idx===i?{...p,[k]:v}:p));
-  const addAll=()=>{parsed.filter(p=>!p.skip).forEach(p=>app.addPosition({ticker:p.ticker,name:p.name,role:p.role,theme:p.theme,buyPrice:p.buyPrice,currentPrice:p.currentPrice,shares:p.shares}));setStep('done');};
+  const addAll=()=>{
+    parsed.filter(p=>!p.skip).forEach(p=>{
+      const existing=app.positions.find(x=>x.ticker.toUpperCase()===p.ticker.toUpperCase());
+      if(existing&&p.isExisting){
+        // Weighted average cost basis merge
+        const totalShares=Math.round((existing.shares+p.shares)*10000)/10000;
+        const avgCost=Math.round((existing.shares*existing.buyPrice+p.shares*p.buyPrice)/totalShares*100)/100;
+        app.updatePosition(existing.id,{shares:totalShares,buyPrice:avgCost,currentPrice:p.currentPrice});
+      } else {
+        app.addPosition({ticker:p.ticker,name:p.name,role:p.role,theme:p.theme,buyPrice:p.buyPrice,currentPrice:p.currentPrice,shares:p.shares});
+      }
+    });
+    setStep('done');
+  };
   const toAdd=parsed.filter(p=>!p.skip).length;
 
   return<div style={{position:'fixed',inset:0,zIndex:500,background:'rgba(0,0,0,.75)',display:'flex',alignItems:'flex-end',justifyContent:'center',backdropFilter:'blur(2px)'}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
@@ -1743,14 +1756,13 @@ function ImportModal({onClose}){
           {parsed.map((p,i)=><div key={i} style={{background:'var(--bg3)',borderRadius:10,padding:12,marginBottom:8,opacity:p.skip?.6:1}}>
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
               <div style={{display:'flex',alignItems:'center',gap:6}}>
-                {p.skip&&<span style={{fontSize:10,background:'var(--orange-bg)',color:'var(--orange)',padding:'2px 6px',borderRadius:4,fontWeight:700}}>Already in portfolio</span>}
+                {p.isExisting&&!p.skip&&<span style={{fontSize:10,background:'#0ea5e920',color:'#0ea5e9',padding:'2px 6px',borderRadius:4,fontWeight:700}}>🔄 Will merge</span>}
                 <span style={{fontWeight:800,fontSize:15}}>{p.ticker}</span>
                 <span style={{fontSize:11,color:'var(--text3)'}}>{p.name}</span>
               </div>
-              {p.skip
-                ?<button onClick={()=>upd(i,'skip',false)} style={{fontSize:11,background:'none',border:'1px solid var(--border2)',borderRadius:6,padding:'2px 8px',color:'var(--blue)',cursor:'pointer'}}>Add anyway</button>
-                :<button onClick={()=>upd(i,'skip',true)} style={{fontSize:11,background:'none',border:'none',color:'var(--text3)',cursor:'pointer'}}>✕</button>}
+              <button onClick={()=>upd(i,'skip',!p.skip)} style={{fontSize:11,background:'none',border:'none',color:p.skip?'var(--blue)':'var(--text3)',cursor:'pointer',fontWeight:p.skip?700:400}}>{p.skip?'+ Include':'✕'}</button>
             </div>
+            {p.isExisting&&!p.skip&&(()=>{const ex=app.positions.find(x=>x.ticker.toUpperCase()===p.ticker.toUpperCase());if(!ex)return null;const tot=Math.round((ex.shares+p.shares)*100)/100;const avg=Math.round((ex.shares*ex.buyPrice+p.shares*p.buyPrice)/(ex.shares+p.shares)*100)/100;return<div style={{fontSize:11,color:'#0ea5e9',marginBottom:6,background:'#0ea5e910',borderRadius:6,padding:'5px 8px'}}>📊 {ex.shares}sh @ ${ex.buyPrice.toFixed(2)} + {p.shares}sh @ ${p.buyPrice.toFixed(2)} = <strong>{tot}sh @ ${avg} avg cost</strong></div>;})()}
             <div style={{display:'flex',gap:8,fontSize:12,marginBottom:8,flexWrap:'wrap'}}>
               <span style={{color:'var(--text3)'}}>Shares:</span><strong>{p.shares}</strong>
               <span style={{color:'var(--text3)',marginLeft:8}}>Price:</span><strong>${p.currentPrice.toFixed(2)}</strong>
@@ -1775,8 +1787,9 @@ function ImportModal({onClose}){
           <div style={{fontSize:11,color:'var(--text3)',marginBottom:12,background:'var(--bg3)',borderRadius:8,padding:'8px 10px'}}>
             💡 Enter your <strong>Avg Cost</strong> per share for accurate P&L — find it in your broker's position detail page.
           </div>
-          <button className="btn btn-primary btn-full" style={{padding:14,fontSize:15}} onClick={addAll} disabled={toAdd===0}>
-            Add {toAdd} Position{toAdd!==1?'s':''} →
+          {toAdd===0&&<div style={{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:8,padding:'10px 12px',marginBottom:8,fontSize:12,color:'var(--text3)',textAlign:'center'}}>All positions excluded — tap <strong style={{color:'var(--blue)'}}>+ Include</strong> on any row to add it.</div>}
+          <button className="btn btn-primary btn-full" style={{padding:14,fontSize:15,opacity:toAdd===0?.4:1,cursor:toAdd===0?'not-allowed':'pointer'}} onClick={addAll} disabled={toAdd===0}>
+            {toAdd===0?'Nothing to import':(()=>{const merges=parsed.filter(p=>!p.skip&&p.isExisting).length;const adds=toAdd-merges;if(merges>0&&adds>0)return `Merge ${merges} + Add ${adds} →`;if(merges>0)return `Merge ${merges} Position${merges!==1?'s':''} →`;return `Add ${adds} Position${adds!==1?'s':''} →`;})()}
           </button>
           <button className="btn btn-secondary btn-full" style={{marginTop:8,fontSize:13}} onClick={()=>{setImgData(null);setImgPreview(null);setParsed([]);setStep('upload');}}>← Try Different File</button>
         </>}
