@@ -101,6 +101,7 @@ function getDeployPlan(regime,budget){const b=Math.round(budget||2000);const f=v
 const ECON_CAL=[{date:'2026-03-31',title:'PCE Price Index',cat:'economic',impact:'high'},{date:'2026-04-03',title:'Non-Farm Payrolls',cat:'economic',impact:'high'},{date:'2026-04-09',title:'CPI Inflation',cat:'economic',impact:'high'},{date:'2026-04-14',title:'Earnings Season',cat:'earnings',impact:'high'},{date:'2026-04-22',title:'GOOGL Earnings',cat:'earnings',impact:'high'},{date:'2026-04-28',title:'FOMC Day 1',cat:'fed',impact:'high'},{date:'2026-04-29',title:'FOMC Decision+GDP',cat:'fed',impact:'high'},{date:'2026-04-30',title:'MSFT Earnings',cat:'earnings',impact:'high'},{date:'2026-05-06',title:'NVDA Earnings',cat:'earnings',impact:'high'},{date:'2026-05-13',title:'CPI (Apr)',cat:'economic',impact:'high'}];
 
 // ─── UTILS ──────────────────────────────────────────────────────────────────
+const ordinal=n=>{const s=['th','st','nd','rd'];const v=n%100;return n+(s[(v-20)%10]||s[v]||s[0]);};
 const fmt$=v=>'$'+Math.abs(v).toLocaleString('en-US',{maximumFractionDigits:0});
 const fmtPct=v=>v.toFixed(1)+'%';const pnlSign=v=>v>=0?'+':'-';const pnlColor=v=>v>0?'var(--green)':v<0?'var(--red)':'var(--text3)';
 const fmtVol=v=>v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?(v/1e3).toFixed(0)+'K':v+'';
@@ -160,7 +161,7 @@ function VolStrip({vol}){
     </div>
     <div style={{display:'flex',justifyContent:'space-between',fontSize:10,color:'var(--text3)'}}>
       <span>±{vol.move10?.pct}% expected 10d</span>
-      <span style={{color,fontWeight:700}}>{pct}th pct</span>
+      <span style={{color,fontWeight:700}}>{ordinal(pct)} pct</span>
     </div>
   </div>;
 }
@@ -893,7 +894,7 @@ function PositionDetail({pos,onBack}){
     {/* ── Volatility Detail Card ── */}
     {app.volatility[pos.ticker.toUpperCase()]&&(()=>{const vol=app.volatility[pos.ticker.toUpperCase()];const pct=vol.volPct;const color=pct>=80?'var(--red)':pct>=60?'var(--orange)':pct<=20?'var(--green)':'var(--blue)';
     return<div className="card">
-      <div className="card-header"><span className="card-title">📊 Volatility Forecast</span><span style={{fontSize:11,fontWeight:800,color,background:color+'20',padding:'2px 8px',borderRadius:4}}>{vol.volLabel} · {pct}th pct</span></div>
+      <div className="card-header"><span className="card-title">📊 Volatility Forecast</span><span style={{fontSize:11,fontWeight:800,color,background:color+'20',padding:'2px 8px',borderRadius:4}}>{vol.volLabel} · {ordinal(pct)} pct</span></div>
       <div className="divider"/>
       <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,fontSize:12}}>
         <span style={{color:'var(--text3)'}}>Annual vol (EWMA)</span><strong>{vol.annualVol}%</strong>
@@ -1897,7 +1898,7 @@ function SmartPicksCard(){
           const reasons=[];
           if(missing)reasons.push(`Adds ${stock.sector} — sector missing from your portfolio`);
           if((rating==='strong_buy'||rating==='buy')&&d.analystCount>3)reasons.push(`${d.analystCount} analysts rate ${rating.replace('_',' ')} — strong consensus`);
-          if(m.volPct<35)reasons.push(`Low vol (${m.volPct}th pct) — cheap entry window`);
+          if(m.volPct<35)reasons.push(`Low vol (${ordinal(m.volPct)} pct) — cheap entry window`);
           if(m.pctFromMa200>0&&m.pctFromMa50<0)reasons.push('Pulled back to MA50 in uptrend — classic entry point');
           if(m.rsi>=40&&m.rsi<=58)reasons.push(`RSI ${m.rsi} — neutral, room to run`);
           if(momentum>3&&momentum<12)reasons.push(`+${momentum.toFixed(1)}% 20d momentum — healthy uptrend`);
@@ -2311,7 +2312,7 @@ function StockAnalyzer(){
         <div style={{position:'relative',height:8,background:'linear-gradient(to right, var(--red-bg), var(--bg3), var(--green-bg))',borderRadius:4,marginBottom:6}}>
           <div style={{position:'absolute',left:'50%',top:-2,width:4,height:12,background:'var(--text)',borderRadius:2,transform:'translateX(-50%)'}}/>
         </div>
-        <div style={{textAlign:'center',fontSize:11,color:'var(--text3)'}}>±{result.expectedRange.movePct}% expected move · {result.metrics.annualVol}% annual vol ({result.metrics.volPct}th pct)</div>
+        <div style={{textAlign:'center',fontSize:11,color:'var(--text3)'}}>±{result.expectedRange.movePct}% expected move · {result.metrics.annualVol}% annual vol ({ordinal(result.metrics.volPct)} pct)</div>
       </div>
 
       {/* Key factors */}
