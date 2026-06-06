@@ -135,6 +135,8 @@ link:<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={col
 zap:<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
 forecast:<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M3 17l4-8 4 4 4-6 4 4"/><path d="M3 21h18"/><path d="M21 3l-4 4"/><path d="M17 3h4v4"/></svg>,
 insights:<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>,
+grid:<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>,
+today:<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>,
 };return i[name]||null;};
 
 // ─── COMPONENTS ─────────────────────────────────────────────────────────────
@@ -2519,12 +2521,89 @@ function DemoBanner({onSetup}){
   </div>;
 }
 
+// ─── TODAY TAB (story-first home screen) ────────────────────────────────────
+function TodayTab({setTab}){
+  const app=useApp();
+  const REGIME_PLAIN={'Risk-On':{msg:'Deploy into growth',color:'var(--green)',bg:'var(--green-bg)',dot:'var(--green)'},'Risk-Off':{msg:'Defensive mode — reduce risk',color:'var(--red)',bg:'var(--red-bg)',dot:'var(--red)'},'Oil Shock':{msg:'Energy disruption — caution',color:'var(--orange)',bg:'var(--orange-bg)',dot:'var(--orange)'},'Inflation Spike':{msg:'Inflation pressures — stay defensive',color:'var(--orange)',bg:'var(--orange-bg)',dot:'var(--orange)'},'Recession Scare':{msg:'Recession risk — reduce exposure',color:'var(--red)',bg:'var(--red-bg)',dot:'var(--red)'},'Not Assessed':{msg:'Checking market conditions…',color:'var(--text3)',bg:'var(--bg3)',dot:'var(--text3)'}};
+  const rm=REGIME_PLAIN[app.regime]||REGIME_PLAIN['Not Assessed'];
+  const rp=app.regimeProb;
+  const steps=[];let n=0;
+  if(app.circuitLevel.name!=='Normal'){n++;steps.push({num:n,color:app.circuitLevel.color,title:app.circuitLevel.name+' Active',desc:app.circuitLevel.actions[0],urgent:true,key:'circuit'});}
+  app.positions.filter(p=>getSignal(p).name.includes('STOP')).forEach(p=>{n++;steps.push({num:n,color:'#b91c1c',title:'Sell '+p.ticker+' — stop-loss hit',desc:'Down '+getPnlPct(p).toFixed(1)+'% · sell all '+p.shares+' shares',urgent:true,key:'exit_'+p.ticker});});
+  const isOrangeOrWorse=['Orange Alert','Red Alert','HARD STOP'].includes(app.circuitLevel.name);
+  if(isOrangeOrWorse){app.positions.filter(p=>p.role==='Satellite'&&!getSignal(p).name.includes('STOP')).forEach(p=>{n++;steps.push({num:n,color:'var(--red)',title:'Exit '+p.ticker+' — circuit breaker',desc:'Sell all satellite positions · '+p.shares+' shares',urgent:true,key:'cb_'+p.ticker});});}
+  if(!isOrangeOrWorse){app.positions.filter(p=>getSignal(p).name.includes('TRIM')).forEach(p=>{n++;const pct=getSignal(p).name.includes('STRONG')?35:20;steps.push({num:n,color:'var(--orange)',title:'Trim '+p.ticker+' — take some profit',desc:pct+'% of position has run up — consider reducing',key:'trim_'+p.ticker});});}
+  if(app.regime!=='Not Assessed'&&app.circuitLevel.name!=='HARD STOP'&&app.circuitLevel.name!=='Red Alert'){getDeployPlan(app.regime,app.monthlyBudget).forEach((pl,i)=>{n++;steps.push({num:n,color:'var(--green)',title:'Deploy '+pl.amount+' → '+pl.target,desc:pl.label||'Per '+app.regime+' regime plan',key:'deploy_'+i});});}
+  if(app.circuitLevel.name==='Normal'){app.positions.filter(p=>getSignal(p).name.includes('ADD')).forEach(p=>{n++;steps.push({num:n,color:'var(--blue)',title:'Watch '+p.ticker+' for entry',desc:'Down '+getPnlPct(p).toFixed(1)+'% · confirm thesis before adding',key:'add_'+p.ticker});});}
+  const urgent=steps.filter(s=>s.urgent);const normal=steps.filter(s=>!s.urgent);const actionCount=app.actionableSignals.length;
+  const hr=new Date().getHours();const greeting=hr<12?'Good morning':hr<17?'Good afternoon':'Good evening';
+  const refreshLabel=app.lastRefresh?(()=>{const d=Math.floor((Date.now()-app.lastRefresh)/1000);return d<60?'Just now':d<120?'1 min ago':Math.floor(d/60)+' min ago';})():'–';
+  return<div className="fade-in">
+    <div className="page-header"><div><div className="page-title">{greeting}</div><div style={{fontSize:11,color:'var(--text3)',display:'flex',alignItems:'center',gap:4,marginTop:2}}>{app.isRefreshing?<><Spinner/> Updating…</>:<><span className="status-dot" style={{background:'var(--green)'}}/>{refreshLabel}</>}</div></div><div className="header-actions"><button className="theme-toggle" onClick={app.toggleTheme}>{app.theme==='dark'?<Icon name="sun" size={16}/>:<Icon name="moon" size={16}/>}</button><button className="refresh-btn" onClick={app.refreshPrices} disabled={app.isRefreshing}><Icon name="refresh" size={14}/></button></div></div>
+
+    {/* 1. Market Conditions */}
+    <div style={{fontSize:10,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.6px',marginBottom:6}}>1 · Market conditions</div>
+    <div className="card" style={{background:rm.bg,borderColor:rm.color+'44',marginBottom:12}}>
+      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:8}}>
+        <div style={{flex:1}}>
+          <div style={{fontSize:18,fontWeight:800,color:rm.color,marginBottom:4}}>{rm.msg}</div>
+          {rp&&<div style={{fontSize:12,color:rp.pRiskOff>=70?'var(--red)':rp.pRiskOff>=45?'var(--orange)':'var(--text3)',marginBottom:6}}>{rp.pRiskOff}% chance conditions shift defensive</div>}
+          {app.autoRegimeData&&<div style={{display:'flex',gap:10,flexWrap:'wrap'}}>{[{label:'SPY vs MA',pass:app.autoRegimeData.answers?.spy200},{label:'VIX',pass:app.autoRegimeData.answers?.vix20},{label:'Yields',pass:app.autoRegimeData.answers?.yields},{label:'Oil',pass:app.autoRegimeData.answers?.oil},{label:'DXY',pass:app.autoRegimeData.answers?.dxy}].map((f,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:3,fontSize:11}}><div style={{width:6,height:6,borderRadius:'50%',background:f.pass?'var(--green)':'var(--red)'}}/><span style={{color:'var(--text2)'}}>{f.label}</span></div>)}</div>}
+        </div>
+        <button onClick={()=>setTab('more')} style={{background:'none',border:'0.5px solid var(--border)',borderRadius:6,color:'var(--text3)',fontSize:11,padding:'4px 8px',cursor:'pointer',whiteSpace:'nowrap',flexShrink:0}}>Details →</button>
+      </div>
+    </div>
+
+    {/* 2. Today's Actions */}
+    <div style={{fontSize:10,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.6px',marginBottom:6}}>2 · What to do today</div>
+    {steps.length===0
+      ?<div className="card" style={{background:'var(--green-bg)',borderColor:'var(--green)',textAlign:'center',padding:'14px 16px',marginBottom:12}}><div style={{fontSize:14,fontWeight:700,color:'var(--green)'}}>✓ All clear — hold positions</div><div style={{fontSize:12,color:'var(--text3)',marginTop:4}}>No action needed. Check back tomorrow.</div></div>
+      :<div style={{marginBottom:12}}>{[...urgent,...normal].slice(0,5).map(s=><div key={s.key} className="card" style={{borderColor:s.urgent?s.color+'55':'var(--border)',background:s.urgent?s.color+'0D':'var(--card)',marginBottom:8,padding:12}}><div style={{display:'flex',alignItems:'flex-start',gap:10}}><div style={{width:22,height:22,borderRadius:'50%',background:s.color,color:'#fff',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,marginTop:1}}>{s.num}</div><div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:s.urgent?s.color:'var(--text)',...(app.actionChecks[s.key]?{textDecoration:'line-through',opacity:.5}:{})}}>{s.title}</div><div style={{fontSize:11,color:'var(--text3)',marginTop:2,...(app.actionChecks[s.key]?{textDecoration:'line-through',opacity:.5}:{})}}>{s.desc}</div></div><button className={'step-check '+(app.actionChecks[s.key]?'checked':'')} onClick={()=>app.toggleActionCheck(s.key)}>{app.actionChecks[s.key]&&<Icon name="check" size={14} color="#fff"/>}</button></div></div>)}
+      {steps.length>5&&<div style={{fontSize:11,color:'var(--text3)',textAlign:'center',padding:'4px 0'}}>+{steps.length-5} more — see full plan in More tab</div>}</div>}
+
+    {/* 3. Portfolio Health */}
+    <div style={{fontSize:10,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.6px',marginBottom:6}}>3 · Portfolio health</div>
+    <div className="card" style={{padding:12,marginBottom:12}}>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:0,marginBottom:10}}>
+        <div style={{textAlign:'center',padding:'0 4px'}}><div className="mono" style={{fontSize:16,fontWeight:800,color:'var(--text)'}}>{fmt$(app.portfolioTotal)}</div><div style={{fontSize:10,color:'var(--text3)',marginTop:2}}>Value</div></div>
+        <div style={{textAlign:'center',padding:'0 4px',borderLeft:'0.5px solid var(--border)',borderRight:'0.5px solid var(--border)'}}><div className="mono" style={{fontSize:16,fontWeight:800,color:pnlColor(app.totalPnL)}}>{pnlSign(app.totalPnL)}{fmt$(app.totalPnL)}</div><div style={{fontSize:10,color:'var(--text3)',marginTop:2}}>P&amp;L</div></div>
+        <div style={{textAlign:'center',padding:'0 4px'}}><div style={{fontSize:16,fontWeight:800,color:actionCount>0?'var(--orange)':'var(--green)'}}>{actionCount>0?actionCount+'⚠':app.positions.length+'✓'}</div><div style={{fontSize:10,color:'var(--text3)',marginTop:2}}>{actionCount>0?'Need action':'On track'}</div></div>
+      </div>
+      <WeeklySummary/>
+    </div>
+
+    <BehavioralAlerts/>
+
+    {/* 4. Discover CTA */}
+    <button className="btn btn-primary btn-full" style={{padding:'12px 0',fontSize:13,fontWeight:700,marginTop:4}} onClick={()=>setTab('discover')}>🔍 Find new opportunities →</button>
+    <div style={{height:8}}/>
+  </div>;
+}
+
+// ─── PORTFOLIO WRAPPER (Holdings + Signals) ──────────────────────────────────
+function PortfolioTabWrapper(){
+  const [sub,setSub]=useState('portfolio');
+  return<div><div style={{display:'flex',gap:6,marginBottom:12}}>{[{id:'portfolio',label:'Holdings'},{id:'signals',label:'Signals'}].map(t=><button key={t.id} className={'chip '+(sub===t.id?'active':'')} onClick={()=>setSub(t.id)}>{t.label}</button>)}</div>{sub==='portfolio'&&<PortfolioTab/>}{sub==='signals'&&<SignalsTab/>}</div>;
+}
+
+// ─── DISCOVER WRAPPER (Smart Picks + Intel + Markets + Watchlist) ────────────
+function DiscoverTabWrapper(){
+  const [sub,setSub]=useState('picks');
+  return<div><div style={{display:'flex',gap:6,marginBottom:12,overflowX:'auto',paddingBottom:2}}>{[{id:'picks',label:'Smart Picks'},{id:'intel',label:'Intel'},{id:'markets',label:'Markets'},{id:'watchlist',label:'Watchlist'}].map(t=><button key={t.id} className={'chip '+(sub===t.id?'active':'')} onClick={()=>setSub(t.id)} style={{whiteSpace:'nowrap'}}>{t.label}</button>)}</div>{sub==='picks'&&<InsightsTab/>}{sub==='intel'&&<IntelTab/>}{sub==='markets'&&<MarketsTab/>}{sub==='watchlist'&&<WatchlistTab/>}</div>;
+}
+
+// ─── MORE WRAPPER (Regime + Analyze) ────────────────────────────────────────
+function MoreTabWrapper(){
+  const [sub,setSub]=useState('regime');
+  return<div><div style={{display:'flex',gap:6,marginBottom:12}}>{[{id:'regime',label:'Regime'},{id:'forecast',label:'Analyze'},{id:'dashboard',label:'Dashboard'}].map(t=><button key={t.id} className={'chip '+(sub===t.id?'active':'')} onClick={()=>setSub(t.id)}>{t.label}</button>)}</div>{sub==='regime'&&<RegimeTab/>}{sub==='forecast'&&<ForecastTab/>}{sub==='dashboard'&&<DashboardTab/>}</div>;
+}
+
 function App(){
   const [showLanding,setShowLanding]=useState(()=>!localStorage.getItem('vh_onboarded'));
   const [demoMode,setDemoMode]=useState(false);
   const [onboarded,setOnboarded]=useState(()=>!!localStorage.getItem('vh_onboarded'));
-  const tabs=[{id:'dashboard',label:'Dashboard',icon:'dashboard'},{id:'intel',label:'Intel',icon:'zap'},{id:'regime',label:'Regime',icon:'regime'},{id:'signals',label:'Signals',icon:'signals'},{id:'portfolio',label:'Portfolio',icon:'portfolio'},{id:'watchlist',label:'Watchlist',icon:'watchlist'},{id:'markets',label:'Markets',icon:'markets'},{id:'forecast',label:'Analyze',icon:'forecast'},{id:'insights',label:'Insights',icon:'insights'}];
-  const [tab,setTab]=useState('dashboard');
+  const tabs=[{id:'today',label:'Today',icon:'today'},{id:'portfolio',label:'Portfolio',icon:'portfolio'},{id:'discover',label:'Discover',icon:'search'},{id:'more',label:'More',icon:'grid'}];
+  const [tab,setTab]=useState('today');
 
   if(showLanding&&!onboarded&&!demoMode)return<LandingPage
     onDemo={()=>{setShowLanding(false);setDemoMode(true);}}
@@ -2538,7 +2617,7 @@ function App(){
 }
 
 // ─── TAB BAR WITH MORE MENU ───────────────────────────────────────────────────
-const PRIMARY_TABS = ['dashboard','signals','portfolio','forecast'];
+const PRIMARY_TABS = ['today','portfolio','discover','more'];
 
 function TabBar({tab, setTab, tabs}){
   const [showMore, setShowMore] = useState(false);
@@ -2592,7 +2671,7 @@ function AppContent({tab,setTab,tabs,onboarded,setOnboarded,demoMode,onExitDemo}
   return<div className="app">
     {demoMode&&<DemoBanner onSetup={onExitDemo}/>}
     {app.notification&&<div style={{position:'fixed',top:demoMode?40:0,left:0,right:0,zIndex:200,padding:12,background:'linear-gradient(135deg,#b91c1c,#dc2626)',color:'#fff',fontSize:13,fontWeight:600,display:'flex',justifyContent:'space-between'}}><span>{app.notification.text}</span><button onClick={()=>app.setNotification(null)} style={{background:'none',border:'none',color:'#fff',fontWeight:700}}>✕</button></div>}
-    <div className="main" style={mainStyle}>{tab==='dashboard'&&<DashboardTab/>}{tab==='intel'&&<IntelTab/>}{tab==='regime'&&<RegimeTab/>}{tab==='signals'&&<SignalsTab/>}{tab==='portfolio'&&<PortfolioTab/>}{tab==='watchlist'&&<WatchlistTab/>}{tab==='markets'&&<MarketsTab/>}{tab==='forecast'&&<ForecastTab/>}{tab==='insights'&&<InsightsTab/>}</div>
+    <div className="main" style={mainStyle}>{tab==='today'&&<TodayTab setTab={setTab}/>}{tab==='portfolio'&&<PortfolioTabWrapper/>}{tab==='discover'&&<DiscoverTabWrapper/>}{tab==='more'&&<MoreTabWrapper/>}</div>
     <TabBar tab={tab} setTab={setTab} tabs={tabs}/>
     <button onClick={()=>setShowFeedback(true)} style={{position:'fixed',bottom:74,right:16,zIndex:100,background:'var(--blue)',color:'#fff',border:'none',borderRadius:24,padding:'8px 14px',fontSize:12,fontWeight:700,boxShadow:'0 4px 16px rgba(59,130,246,.4)',cursor:'pointer',display:'flex',alignItems:'center',gap:6}}><span style={{fontSize:14}}>💬</span> Feedback</button>
     {showFeedback&&<FeedbackModal onClose={()=>setShowFeedback(false)}/>}
