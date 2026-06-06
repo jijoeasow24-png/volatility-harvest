@@ -27,19 +27,19 @@ export default async function handler(req, res) {
                 }
               },
               {
-                text: `Extract all stock/ETF portfolio positions from this investing app screenshot. Return ONLY a valid JSON array with no extra text or explanation, in this exact format:
+                text: `Extract stock/ETF position(s) from this investing app screenshot. This could be a holdings/portfolio page OR a single trade confirmation/receipt. Return ONLY a valid JSON array with no extra text or explanation, in this exact format:
 [
   {"ticker": "AAPL", "name": "Apple Inc.", "shares": 10, "currentPrice": 195.50}
 ]
 
 Rules:
-- ticker: the stock/ETF symbol in uppercase (e.g. AAPL, MSFT, QQQ)
-- name: full company or fund name if visible, otherwise just use the ticker
-- shares: number of shares owned (can be a decimal like 2.5)
-- currentPrice: current price per share in USD numbers only (no $ sign)
-- If the screenshot shows total market value but not price per share, divide total by shares
-- Skip cash, cash equivalents, bonds, money market funds, or anything non-equity
-- If you cannot find any valid positions, return exactly: []
+- ticker: the stock/ETF symbol in uppercase (e.g. AAPL, MSFT, QQQ). If only a company name is visible (no ticker), infer the correct ticker from the company name (e.g. "UnitedHealth Group" → "UNH", "Apple Inc" → "AAPL", "Tesla" → "TSLA")
+- name: full company or fund name if visible, otherwise use the ticker
+- shares: number of shares. On a trade receipt, look for fields like "Executed quantity", "Quantity", "Units", "Shares". Can be decimal (e.g. 2.001)
+- currentPrice: price per share in USD (numbers only, no $ sign). On a trade receipt, look for "Average price", "Execution price", "Price per share". If only total amount is shown, divide total by shares
+- If the screenshot is a BUY trade confirmation, extract the one position purchased
+- Skip cash, bonds, money market funds, or non-equity instruments
+- If you cannot find any valid position, return exactly: []
 - Return ONLY the JSON array, nothing else — no markdown, no explanation`
               }
             ]
