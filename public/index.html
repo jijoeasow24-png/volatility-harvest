@@ -2650,15 +2650,15 @@ function TabBar({tab, setTab, tabs}){
         <Icon name={t.icon} size={20} color={tab===t.id?'var(--blue)':'var(--text3)'}/>
         <span>{t.label}</span>
       </button>)}
-      {/* More button */}
-      <button className={`tab-btn ${isOverflowActive||showMore?'active':''}`} onClick={()=>setShowMore(v=>!v)}>
+      {/* More button — only show when there are overflow tabs */}
+      {overflow.length>0&&<button className={`tab-btn ${isOverflowActive||showMore?'active':''}`} onClick={()=>setShowMore(v=>!v)}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={isOverflowActive||showMore?'var(--blue)':'var(--text3)'} strokeWidth="2">
           <circle cx="5" cy="12" r="1.5" fill={isOverflowActive||showMore?'var(--blue)':'var(--text3)'}/>
           <circle cx="12" cy="12" r="1.5" fill={isOverflowActive||showMore?'var(--blue)':'var(--text3)'}/>
           <circle cx="19" cy="12" r="1.5" fill={isOverflowActive||showMore?'var(--blue)':'var(--text3)'}/>
         </svg>
         <span>{isOverflowActive ? tabs.find(t=>t.id===tab)?.label : 'More'}</span>
-      </button>
+      </button>}
     </div>
   </>;
 }
