@@ -2541,6 +2541,22 @@ function TodayTab({setTab}){
   return<div className="fade-in">
     <div className="page-header"><div><div className="page-title">{greeting}</div><div style={{fontSize:11,color:'var(--text3)',display:'flex',alignItems:'center',gap:4,marginTop:2}}>{app.isRefreshing?<><Spinner/> Updating…</>:<><span className="status-dot" style={{background:'var(--green)'}}/>{refreshLabel}</>}</div></div><div className="header-actions"><button className="theme-toggle" onClick={app.toggleTheme}>{app.theme==='dark'?<Icon name="sun" size={16}/>:<Icon name="moon" size={16}/>}</button><button className="refresh-btn" onClick={app.refreshPrices} disabled={app.isRefreshing}><Icon name="refresh" size={14}/></button></div></div>
 
+    {/* Portfolio value — hero numbers */}
+    <div className="card" style={{padding:'14px 16px',marginBottom:16}}>
+      <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',marginBottom:8}}>
+        <div>
+          <div style={{fontSize:11,color:'var(--text3)',marginBottom:3}}>Portfolio value</div>
+          <div className="mono" style={{fontSize:28,fontWeight:800,color:'var(--text)',lineHeight:1}}>{fmt$(app.portfolioTotal)}</div>
+        </div>
+        <div style={{textAlign:'right'}}>
+          <div style={{fontSize:11,color:'var(--text3)',marginBottom:3}}>Total P&amp;L</div>
+          <div className="mono" style={{fontSize:20,fontWeight:700,color:pnlColor(app.totalPnL)}}>{pnlSign(app.totalPnL)}{fmt$(app.totalPnL)}</div>
+          <div style={{fontSize:11,color:pnlColor(app.totalPnLPct)}}>{pnlSign(app.totalPnLPct)}{fmtPct(app.totalPnLPct)}</div>
+        </div>
+      </div>
+      <WeeklySummary/>
+    </div>
+
     {/* 1. Market Conditions */}
     <div style={{fontSize:10,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.6px',marginBottom:6}}>1 · Market conditions</div>
     <div className="card" style={{background:rm.bg,borderColor:rm.color+'44',marginBottom:12}}>
@@ -2560,17 +2576,6 @@ function TodayTab({setTab}){
       ?<div className="card" style={{background:'var(--green-bg)',borderColor:'var(--green)',textAlign:'center',padding:'14px 16px',marginBottom:12}}><div style={{fontSize:14,fontWeight:700,color:'var(--green)'}}>✓ All clear — hold positions</div><div style={{fontSize:12,color:'var(--text3)',marginTop:4}}>No action needed. Check back tomorrow.</div></div>
       :<div style={{marginBottom:12}}>{[...urgent,...normal].slice(0,5).map(s=><div key={s.key} className="card" style={{borderColor:s.urgent?s.color+'55':'var(--border)',background:s.urgent?s.color+'0D':'var(--card)',marginBottom:8,padding:12}}><div style={{display:'flex',alignItems:'flex-start',gap:10}}><div style={{width:22,height:22,borderRadius:'50%',background:s.color,color:'#fff',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,marginTop:1}}>{s.num}</div><div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:s.urgent?s.color:'var(--text)',...(app.actionChecks[s.key]?{textDecoration:'line-through',opacity:.5}:{})}}>{s.title}</div><div style={{fontSize:11,color:'var(--text3)',marginTop:2,...(app.actionChecks[s.key]?{textDecoration:'line-through',opacity:.5}:{})}}>{s.desc}</div></div><button className={'step-check '+(app.actionChecks[s.key]?'checked':'')} onClick={()=>app.toggleActionCheck(s.key)}>{app.actionChecks[s.key]&&<Icon name="check" size={14} color="#fff"/>}</button></div></div>)}
       {steps.length>5&&<div style={{fontSize:11,color:'var(--text3)',textAlign:'center',padding:'4px 0'}}>+{steps.length-5} more — see full plan in More tab</div>}</div>}
-
-    {/* 3. Portfolio Health */}
-    <div style={{fontSize:10,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.6px',marginBottom:6}}>3 · Portfolio health</div>
-    <div className="card" style={{padding:12,marginBottom:12}}>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:0,marginBottom:10}}>
-        <div style={{textAlign:'center',padding:'0 4px'}}><div className="mono" style={{fontSize:16,fontWeight:800,color:'var(--text)'}}>{fmt$(app.portfolioTotal)}</div><div style={{fontSize:10,color:'var(--text3)',marginTop:2}}>Value</div></div>
-        <div style={{textAlign:'center',padding:'0 4px',borderLeft:'0.5px solid var(--border)',borderRight:'0.5px solid var(--border)'}}><div className="mono" style={{fontSize:16,fontWeight:800,color:pnlColor(app.totalPnL)}}>{pnlSign(app.totalPnL)}{fmt$(app.totalPnL)}</div><div style={{fontSize:10,color:'var(--text3)',marginTop:2}}>P&amp;L</div></div>
-        <div style={{textAlign:'center',padding:'0 4px'}}><div style={{fontSize:16,fontWeight:800,color:actionCount>0?'var(--orange)':'var(--green)'}}>{actionCount>0?actionCount+'⚠':app.positions.length+'✓'}</div><div style={{fontSize:10,color:'var(--text3)',marginTop:2}}>{actionCount>0?'Need action':'On track'}</div></div>
-      </div>
-      <WeeklySummary/>
-    </div>
 
     <BehavioralAlerts/>
 
